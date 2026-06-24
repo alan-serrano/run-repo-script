@@ -17,6 +17,8 @@ export const SAFE_GIT_ENV = {
   GCM_INTERACTIVE: 'never'
 } as const;
 
+const GIT_AUTH_ENV_ALLOWLIST = ['GH_TOKEN', 'GITHUB_TOKEN'] as const;
+
 export function resolveGitHubTarget(input: string): ResolvedRepoTarget {
   const target = input.trim();
   if (!target) {
@@ -98,7 +100,9 @@ export function createGitCloneCommand(
     command: 'git',
     args,
     env: {
-      ...createSafeEnvironment(),
+      ...createSafeEnvironment(process.env, {
+        allowSensitiveKeys: GIT_AUTH_ENV_ALLOWLIST
+      }),
       ...SAFE_GIT_ENV
     }
   };

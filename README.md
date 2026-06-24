@@ -35,5 +35,5 @@ run-repo owner/repo --runner node --yes
 - The CLI executes code from the fetched repository. Review refs before running.
 - You must confirm execution unless `--yes` is passed.
 - Clone is non-interactive (`GIT_TERMINAL_PROMPT=0`) to avoid hanging auth prompts.
-- Clone and installer execution run with a filtered environment that strips obvious secret/token variables.
-- Tradeoff: scripts that depend on secret env vars must be provided those values explicitly; the CLI does not forward your full ambient shell environment.
+- Clone keeps standard GitHub auth token env vars (`GH_TOKEN`, `GITHUB_TOKEN`) so private repository fetches can succeed.
+- Installer execution runs with a filtered environment that strips obvious secret/token variables.

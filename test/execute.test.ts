@@ -159,6 +159,44 @@ writeFileSync('env-check.txt', value);
   }
 });
 
+test('executeInstaller still strips GitHub auth tokens from child environment', async (t) => {
+  const repoRoot = await withTempRepo(t);
+  const markerPath = path.join(repoRoot, 'github-token-check.txt');
+  const scriptPath = path.join(repoRoot, 'install.js');
+  const previousGithubToken = process.env.GITHUB_TOKEN;
+  process.env.GITHUB_TOKEN = 'do-not-leak';
+
+  await writeFile(
+    scriptPath,
+    `import { writeFileSync } from 'node:fs';
+const value = process.env.GITHUB_TOKEN ?? '';
+writeFileSync('github-token-check.txt', value);
+`
+  );
+
+  try {
+    const exitCode = await executeInstaller({
+      repoRoot,
+      script: {
+        absolutePath: scriptPath,
+        relativePath: 'install.js'
+      },
+      yes: true,
+      forwardArgs: [],
+      runnerOverride: 'node'
+    });
+
+    assert.equal(exitCode, 0);
+    assert.equal(await readFile(markerPath, 'utf8'), '');
+  } finally {
+    if (previousGithubToken === undefined) {
+      delete process.env.GITHUB_TOKEN;
+    } else {
+      process.env.GITHUB_TOKEN = previousGithubToken;
+    }
+  }
+});
+
 test('executeInstaller uses confirmation path when --yes is not passed', async () => {
   let confirmationCalled = false;
 

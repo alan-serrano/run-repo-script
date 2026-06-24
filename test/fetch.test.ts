@@ -43,8 +43,12 @@ test('resolveGitHubTarget rejects non-GitHub host', () => {
 test('createGitCloneCommand builds shallow clone command with safe env', () => {
   const previousSecret = process.env.RUN_REPO_TEST_SECRET_TOKEN;
   const previousPlain = process.env.RUN_REPO_TEST_PLAIN;
+  const previousGhToken = process.env.GH_TOKEN;
+  const previousGithubToken = process.env.GITHUB_TOKEN;
   process.env.RUN_REPO_TEST_SECRET_TOKEN = 'top-secret';
   process.env.RUN_REPO_TEST_PLAIN = 'safe';
+  process.env.GH_TOKEN = 'gh-auth-token';
+  process.env.GITHUB_TOKEN = 'github-auth-token';
 
   const command = createGitCloneCommand(
     {
@@ -75,6 +79,8 @@ test('createGitCloneCommand builds shallow clone command with safe env', () => {
     assert.equal(command.env.GIT_SSH_COMMAND, SAFE_GIT_ENV.GIT_SSH_COMMAND);
     assert.equal(command.env.RUN_REPO_TEST_SECRET_TOKEN, undefined);
     assert.equal(command.env.RUN_REPO_TEST_PLAIN, 'safe');
+    assert.equal(command.env.GH_TOKEN, 'gh-auth-token');
+    assert.equal(command.env.GITHUB_TOKEN, 'github-auth-token');
   } finally {
     if (previousSecret === undefined) {
       delete process.env.RUN_REPO_TEST_SECRET_TOKEN;
@@ -86,6 +92,18 @@ test('createGitCloneCommand builds shallow clone command with safe env', () => {
       delete process.env.RUN_REPO_TEST_PLAIN;
     } else {
       process.env.RUN_REPO_TEST_PLAIN = previousPlain;
+    }
+
+    if (previousGhToken === undefined) {
+      delete process.env.GH_TOKEN;
+    } else {
+      process.env.GH_TOKEN = previousGhToken;
+    }
+
+    if (previousGithubToken === undefined) {
+      delete process.env.GITHUB_TOKEN;
+    } else {
+      process.env.GITHUB_TOKEN = previousGithubToken;
     }
   }
 });

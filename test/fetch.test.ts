@@ -152,3 +152,73 @@ test('createGitCloneCommand builds shallow clone command with minimal clone env'
     }
   }
 });
+
+test('createGitCloneCommand drops bare credential-bearing proxy values while preserving safe clone env values', () => {
+  const previousHttpProxy = process.env.HTTP_PROXY;
+  const previousHttpsProxy = process.env.HTTPS_PROXY;
+  const previousAllProxy = process.env.ALL_PROXY;
+  const previousNoProxy = process.env.NO_PROXY;
+  const previousGhToken = process.env.GH_TOKEN;
+  const previousGithubToken = process.env.GITHUB_TOKEN;
+  process.env.HTTP_PROXY = 'demo-user:demo-pass@proxy.internal:8080';
+  process.env.HTTPS_PROXY = 'http://proxy.internal:8443';
+  process.env.ALL_PROXY = 'socks5://proxy.internal:1080';
+  process.env.NO_PROXY = 'localhost,127.0.0.1';
+  process.env.GH_TOKEN = 'fixture-gh-token';
+  process.env.GITHUB_TOKEN = 'fixture-github-token';
+
+  const command = createGitCloneCommand(
+    {
+      owner: 'owner',
+      repo: 'repo',
+      ref: 'main',
+      cloneUrl: 'https://github.com/owner/repo.git'
+    },
+    '/tmp/run-repo-bare-proxy'
+  );
+
+  try {
+    assert.equal(command.env.HTTP_PROXY, undefined);
+    assert.equal(command.env.HTTPS_PROXY, 'http://proxy.internal:8443');
+    assert.equal(command.env.ALL_PROXY, 'socks5://proxy.internal:1080');
+    assert.equal(command.env.NO_PROXY, 'localhost,127.0.0.1');
+    assert.equal(command.env.GH_TOKEN, 'fixture-gh-token');
+    assert.equal(command.env.GITHUB_TOKEN, 'fixture-github-token');
+  } finally {
+    if (previousHttpProxy === undefined) {
+      delete process.env.HTTP_PROXY;
+    } else {
+      process.env.HTTP_PROXY = previousHttpProxy;
+    }
+
+    if (previousHttpsProxy === undefined) {
+      delete process.env.HTTPS_PROXY;
+    } else {
+      process.env.HTTPS_PROXY = previousHttpsProxy;
+    }
+
+    if (previousAllProxy === undefined) {
+      delete process.env.ALL_PROXY;
+    } else {
+      process.env.ALL_PROXY = previousAllProxy;
+    }
+
+    if (previousNoProxy === undefined) {
+      delete process.env.NO_PROXY;
+    } else {
+      process.env.NO_PROXY = previousNoProxy;
+    }
+
+    if (previousGhToken === undefined) {
+      delete process.env.GH_TOKEN;
+    } else {
+      process.env.GH_TOKEN = previousGhToken;
+    }
+
+    if (previousGithubToken === undefined) {
+      delete process.env.GITHUB_TOKEN;
+    } else {
+      process.env.GITHUB_TOKEN = previousGithubToken;
+    }
+  }
+});

@@ -5,9 +5,9 @@ import { createInstallerEnvironment } from '../src/env.js';
 test('createInstallerEnvironment drops proxy vars with embedded credentials', () => {
   const installerEnv = createInstallerEnvironment({
     PATH: '/usr/bin',
-    HTTP_PROXY: 'user:pass@proxy.internal:8080',
-    HTTPS_PROXY: 'http://user@proxy.internal:8443',
-    ALL_PROXY: 'socks5://token:secret@proxy.internal:1080',
+    HTTP_PROXY: 'demo-user:demo-pass@proxy.internal:8080',
+    HTTPS_PROXY: 'http://demo-user@proxy.internal:8443',
+    ALL_PROXY: 'socks5://demo-token:demo-secret@proxy.internal:1080',
     NO_PROXY: 'localhost,127.0.0.1'
   });
 

@@ -174,7 +174,7 @@ test('executeInstaller strips obvious secret variables from child environment', 
   const markerPath = path.join(repoRoot, 'env-check.txt');
   const scriptPath = path.join(repoRoot, 'install.js');
   const previousSecret = process.env.RUN_REPO_TEST_SECRET_TOKEN;
-  process.env.RUN_REPO_TEST_SECRET_TOKEN = 'do-not-leak';
+  process.env.RUN_REPO_TEST_SECRET_TOKEN = 'fixture-sensitive';
 
   await writeFile(
     scriptPath,
@@ -228,7 +228,7 @@ test('executeInstaller preserves non-credential proxy and cert vars while still 
   process.env.SSL_CERT_FILE = '/etc/ssl/certs/corp.pem';
   process.env.SSL_CERT_DIR = '/etc/ssl/certs';
   process.env.NODE_EXTRA_CA_CERTS = '/etc/ssl/certs/corp-node.pem';
-  process.env.RUN_REPO_TEST_SECRET_TOKEN = 'do-not-leak';
+  process.env.RUN_REPO_TEST_SECRET_TOKEN = 'fixture-sensitive';
 
   await writeFile(
     scriptPath,
@@ -346,9 +346,9 @@ test('executeInstaller drops credential-bearing proxy vars while preserving NO_P
   const previousSslCertFile = process.env.SSL_CERT_FILE;
   const previousNodeExtraCaCerts = process.env.NODE_EXTRA_CA_CERTS;
 
-  process.env.HTTP_PROXY = 'http://user:pass@proxy.internal:8080';
-  process.env.HTTPS_PROXY = 'http://user@proxy.internal:8443';
-  process.env.ALL_PROXY = 'socks5://token:secret@proxy.internal:1080';
+  process.env.HTTP_PROXY = 'http://demo-user:demo-pass@proxy.internal:8080';
+  process.env.HTTPS_PROXY = 'http://demo-user@proxy.internal:8443';
+  process.env.ALL_PROXY = 'socks5://demo-token:demo-secret@proxy.internal:1080';
   process.env.NO_PROXY = 'localhost,127.0.0.1';
   process.env.SSL_CERT_FILE = '/etc/ssl/certs/corp.pem';
   process.env.NODE_EXTRA_CA_CERTS = '/etc/ssl/certs/corp-node.pem';
@@ -436,12 +436,70 @@ writeFileSync('env-network-credential-proxy-check.json', JSON.stringify(values))
   }
 });
 
+test('executeInstaller drops bare credential-bearing proxy values in execution path', async (t) => {
+  const repoRoot = await withTempRepo(t);
+  const markerPath = path.join(repoRoot, 'env-bare-proxy-check.json');
+  const scriptPath = path.join(repoRoot, 'install.js');
+
+  const previousHttpProxy = process.env.HTTP_PROXY;
+  const previousHttpsProxy = process.env.HTTPS_PROXY;
+
+  process.env.HTTP_PROXY = 'demo-user:demo-pass@proxy.internal:8080';
+  process.env.HTTPS_PROXY = 'http://proxy.internal:8443';
+
+  await writeFile(
+    scriptPath,
+    `import { writeFileSync } from 'node:fs';
+const values = {
+  httpProxy: process.env.HTTP_PROXY ?? '',
+  httpsProxy: process.env.HTTPS_PROXY ?? ''
+};
+writeFileSync('env-bare-proxy-check.json', JSON.stringify(values));
+`
+  );
+
+  try {
+    const exitCode = await executeInstaller({
+      repoRoot,
+      script: {
+        absolutePath: scriptPath,
+        relativePath: 'install.js'
+      },
+      yes: true,
+      forwardArgs: [],
+      runnerOverride: 'node'
+    });
+
+    assert.equal(exitCode, 0);
+
+    const values = JSON.parse(await readFile(markerPath, 'utf8')) as {
+      httpProxy: string;
+      httpsProxy: string;
+    };
+
+    assert.equal(values.httpProxy, '');
+    assert.equal(values.httpsProxy, 'http://proxy.internal:8443');
+  } finally {
+    if (previousHttpProxy === undefined) {
+      delete process.env.HTTP_PROXY;
+    } else {
+      process.env.HTTP_PROXY = previousHttpProxy;
+    }
+
+    if (previousHttpsProxy === undefined) {
+      delete process.env.HTTPS_PROXY;
+    } else {
+      process.env.HTTPS_PROXY = previousHttpsProxy;
+    }
+  }
+});
+
 test('executeInstaller still strips GitHub auth tokens from child environment', async (t) => {
   const repoRoot = await withTempRepo(t);
   const markerPath = path.join(repoRoot, 'github-token-check.txt');
   const scriptPath = path.join(repoRoot, 'install.js');
   const previousGithubToken = process.env.GITHUB_TOKEN;
-  process.env.GITHUB_TOKEN = 'do-not-leak';
+  process.env.GITHUB_TOKEN = 'fixture-github-token';
 
   await writeFile(
     scriptPath,
@@ -479,7 +537,7 @@ test('executeInstaller strips DATABASE_URL from child environment', async (t) =>
   const markerPath = path.join(repoRoot, 'database-url-check.txt');
   const scriptPath = path.join(repoRoot, 'install.js');
   const previousDatabaseUrl = process.env.DATABASE_URL;
-  process.env.DATABASE_URL = 'postgres://user:pass@localhost:5432/app';
+  process.env.DATABASE_URL = 'fixture-database-url';
 
   await writeFile(
     scriptPath,

@@ -44,8 +44,47 @@ const INSTALLER_ENV_ALLOWLIST = [
   'LOCALAPPDATA'
 ] as const;
 
+const GIT_CLONE_ENV_ALLOWLIST = [
+  'PATH',
+  'HOME',
+  'USER',
+  'LOGNAME',
+  'SHELL',
+  'LANG',
+  'TZ',
+  'TMPDIR',
+  'TMP',
+  'TEMP',
+  'SYSTEMROOT',
+  'WINDIR',
+  'COMSPEC',
+  'PATHEXT',
+  'USERPROFILE',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'XDG_CONFIG_HOME',
+  'XDG_CACHE_HOME',
+  'XDG_DATA_HOME',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'NO_PROXY',
+  'ALL_PROXY',
+  'SSL_CERT_FILE',
+  'SSL_CERT_DIR',
+  'GIT_SSL_CAINFO',
+  'GIT_SSL_CAPATH',
+  'GIT_ASKPASS',
+  'SSH_ASKPASS',
+  'SSH_AUTH_SOCK',
+  'SSH_AGENT_PID',
+  'GH_TOKEN',
+  'GITHUB_TOKEN'
+] as const;
+
 const INSTALLER_ENV_ALLOWLIST_PREFIXES = ['LC_'] as const;
 const INSTALLER_ENV_ALLOWLIST_SET = normalizeKeySet(INSTALLER_ENV_ALLOWLIST);
+const GIT_CLONE_ENV_ALLOWLIST_PREFIXES = ['LC_'] as const;
+const GIT_CLONE_ENV_ALLOWLIST_SET = normalizeKeySet(GIT_CLONE_ENV_ALLOWLIST);
 const INSTALLER_PROXY_URL_ENV_KEYS = normalizeKeySet([
   'HTTP_PROXY',
   'HTTPS_PROXY',
@@ -104,6 +143,18 @@ function isInstallerEnvironmentKeyAllowed(key: string): boolean {
   );
 }
 
+function isGitCloneEnvironmentKeyAllowed(key: string): boolean {
+  const normalizedKey = key.toUpperCase();
+
+  if (GIT_CLONE_ENV_ALLOWLIST_SET.has(normalizedKey)) {
+    return true;
+  }
+
+  return GIT_CLONE_ENV_ALLOWLIST_PREFIXES.some((prefix) =>
+    normalizedKey.startsWith(prefix)
+  );
+}
+
 function hasEmbeddedProxyCredentials(proxyValue: string): boolean {
   const trimmedProxyValue = proxyValue.trim();
   const proxyUrlToParse = trimmedProxyValue.includes('://')
@@ -140,6 +191,22 @@ export function createInstallerEnvironment(
       !isInstallerEnvironmentKeyAllowed(key) ||
       shouldDropInstallerProxyEnvironmentKey(key, value)
     ) {
+      continue;
+    }
+
+    safeEnv[key] = value;
+  }
+
+  return safeEnv;
+}
+
+export function createGitCloneEnvironment(
+  sourceEnv: NodeJS.ProcessEnv = process.env
+): NodeJS.ProcessEnv {
+  const safeEnv: NodeJS.ProcessEnv = {};
+
+  for (const [key, value] of Object.entries(sourceEnv)) {
+    if (value === undefined || !isGitCloneEnvironmentKeyAllowed(key)) {
       continue;
     }
 

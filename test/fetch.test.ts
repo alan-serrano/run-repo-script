@@ -40,15 +40,17 @@ test('resolveGitHubTarget rejects non-GitHub host', () => {
   );
 });
 
-test('createGitCloneCommand builds shallow clone command with safe env', () => {
+test('createGitCloneCommand builds shallow clone command with minimal clone env', () => {
   const previousSecret = process.env.RUN_REPO_TEST_SECRET_TOKEN;
   const previousPlain = process.env.RUN_REPO_TEST_PLAIN;
+  const previousDatabaseUrl = process.env.DATABASE_URL;
   const previousGhToken = process.env.GH_TOKEN;
   const previousGithubToken = process.env.GITHUB_TOKEN;
-  process.env.RUN_REPO_TEST_SECRET_TOKEN = 'top-secret';
+  process.env.RUN_REPO_TEST_SECRET_TOKEN = 'fixture-sensitive';
   process.env.RUN_REPO_TEST_PLAIN = 'safe';
-  process.env.GH_TOKEN = 'gh-auth-token';
-  process.env.GITHUB_TOKEN = 'github-auth-token';
+  process.env.DATABASE_URL = 'fixture-db-url';
+  process.env.GH_TOKEN = 'fixture-gh-token';
+  process.env.GITHUB_TOKEN = 'fixture-github-token';
 
   const command = createGitCloneCommand(
     {
@@ -78,9 +80,10 @@ test('createGitCloneCommand builds shallow clone command with safe env', () => {
     );
     assert.equal(command.env.GIT_SSH_COMMAND, SAFE_GIT_ENV.GIT_SSH_COMMAND);
     assert.equal(command.env.RUN_REPO_TEST_SECRET_TOKEN, undefined);
-    assert.equal(command.env.RUN_REPO_TEST_PLAIN, 'safe');
-    assert.equal(command.env.GH_TOKEN, 'gh-auth-token');
-    assert.equal(command.env.GITHUB_TOKEN, 'github-auth-token');
+    assert.equal(command.env.RUN_REPO_TEST_PLAIN, undefined);
+    assert.equal(command.env.DATABASE_URL, undefined);
+    assert.equal(command.env.GH_TOKEN, 'fixture-gh-token');
+    assert.equal(command.env.GITHUB_TOKEN, 'fixture-github-token');
   } finally {
     if (previousSecret === undefined) {
       delete process.env.RUN_REPO_TEST_SECRET_TOKEN;
@@ -92,6 +95,12 @@ test('createGitCloneCommand builds shallow clone command with safe env', () => {
       delete process.env.RUN_REPO_TEST_PLAIN;
     } else {
       process.env.RUN_REPO_TEST_PLAIN = previousPlain;
+    }
+
+    if (previousDatabaseUrl === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = previousDatabaseUrl;
     }
 
     if (previousGhToken === undefined) {

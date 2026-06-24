@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createSafeEnvironment } from './env.js';
+import { createGitCloneEnvironment } from './env.js';
 import type { FetchResult, ResolvedRepoTarget } from './types.js';
 
 const SHORTHAND_REGEX =
@@ -16,8 +16,6 @@ export const SAFE_GIT_ENV = {
   GIT_SSH_COMMAND: 'ssh -o BatchMode=yes',
   GCM_INTERACTIVE: 'never'
 } as const;
-
-const GIT_AUTH_ENV_ALLOWLIST = ['GH_TOKEN', 'GITHUB_TOKEN'] as const;
 
 export function resolveGitHubTarget(input: string): ResolvedRepoTarget {
   const target = input.trim();
@@ -100,9 +98,7 @@ export function createGitCloneCommand(
     command: 'git',
     args,
     env: {
-      ...createSafeEnvironment(process.env, {
-        allowSensitiveKeys: GIT_AUTH_ENV_ALLOWLIST
-      }),
+      ...createGitCloneEnvironment(process.env),
       ...SAFE_GIT_ENV
     }
   };

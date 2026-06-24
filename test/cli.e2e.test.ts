@@ -105,12 +105,12 @@ test('e2e error path: missing installer returns failure and cleanup', async (t) 
   await assert.rejects(() => readFile(path.join(workspaceDir, 'install.js')));
 });
 
-test('e2e error path: unavailable runner returns failure', async (t) => {
+test('e2e error path: unavailable runner returns deterministic failure', async (t) => {
   const workspaceDir = await createWorkspace(t);
   await writeFile(path.join(workspaceDir, 'install.js'), 'console.log("ok")\n');
 
   const stderrMessages: string[] = [];
-  const exitCode = await runCli(['owner/repo', '--yes', '--runner', 'zx'], {
+  const exitCode = await runCli(['owner/repo', '--yes'], {
     fetchRepository: async () => ({
       workspaceDir,
       resolvedTarget: {
@@ -119,6 +119,11 @@ test('e2e error path: unavailable runner returns failure', async (t) => {
         cloneUrl: 'https://github.com/owner/repo.git'
       }
     }),
+    executeInstaller: async () => {
+      throw new Error(
+        'Runner "zx" is not available on this host. Install it or use --runner with an available runtime.'
+      );
+    },
     stderr: {
       write(chunk: string) {
         stderrMessages.push(chunk);
@@ -127,13 +132,56 @@ test('e2e error path: unavailable runner returns failure', async (t) => {
     }
   });
 
-  if (!stderrMessages.join('').includes('Runner "zx" is not available')) {
-    t.skip('zx is available in this environment');
-    return;
-  }
-
   assert.equal(exitCode, 1);
   assert.match(stderrMessages.join(''), /Runner "zx" is not available/);
+});
+
+test('e2e confirmation contract: decline returns exit code 1', async (t) => {
+  const workspaceDir = await createWorkspace(t);
+  await writeFile(path.join(workspaceDir, 'install.js'), 'console.log("ok")\n');
+
+  const stderrMessages: string[] = [];
+  const exitCode = await runCli(['owner/repo'], {
+    fetchRepository: async () => ({
+      workspaceDir,
+      resolvedTarget: {
+        owner: 'owner',
+        repo: 'repo',
+        cloneUrl: 'https://github.com/owner/repo.git'
+      }
+    }),
+    executeInstaller: async () => {
+      throw new Error('Execution cancelled by user.');
+    },
+    stderr: {
+      write(chunk: string) {
+        stderrMessages.push(chunk);
+        return true;
+      }
+    }
+  });
+
+  assert.equal(exitCode, 1);
+  assert.match(stderrMessages.join(''), /Execution cancelled by user/);
+});
+
+test('e2e exit code propagation: runCli forwards non-zero child code', async (t) => {
+  const workspaceDir = await createWorkspace(t);
+  await writeFile(path.join(workspaceDir, 'install.js'), 'console.log("ok")\n');
+
+  const exitCode = await runCli(['owner/repo', '--yes'], {
+    fetchRepository: async () => ({
+      workspaceDir,
+      resolvedTarget: {
+        owner: 'owner',
+        repo: 'repo',
+        cloneUrl: 'https://github.com/owner/repo.git'
+      }
+    }),
+    executeInstaller: async () => 42
+  });
+
+  assert.equal(exitCode, 42);
 });
 
 test('e2e error path: rejected SSH input returns failure', async () => {

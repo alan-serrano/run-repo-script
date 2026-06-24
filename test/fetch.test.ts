@@ -41,6 +41,11 @@ test('resolveGitHubTarget rejects non-GitHub host', () => {
 });
 
 test('createGitCloneCommand builds shallow clone command with safe env', () => {
+  const previousSecret = process.env.RUN_REPO_TEST_SECRET_TOKEN;
+  const previousPlain = process.env.RUN_REPO_TEST_PLAIN;
+  process.env.RUN_REPO_TEST_SECRET_TOKEN = 'top-secret';
+  process.env.RUN_REPO_TEST_PLAIN = 'safe';
+
   const command = createGitCloneCommand(
     {
       owner: 'owner',
@@ -51,20 +56,36 @@ test('createGitCloneCommand builds shallow clone command with safe env', () => {
     '/tmp/run-repo-abc'
   );
 
-  assert.equal(command.command, 'git');
-  assert.deepEqual(command.args, [
-    'clone',
-    '--depth',
-    '1',
-    '--branch',
-    'release/v1',
-    '--single-branch',
-    'https://github.com/owner/repo.git',
-    '/tmp/run-repo-abc'
-  ]);
-  assert.equal(
-    command.env.GIT_TERMINAL_PROMPT,
-    SAFE_GIT_ENV.GIT_TERMINAL_PROMPT
-  );
-  assert.equal(command.env.GIT_SSH_COMMAND, SAFE_GIT_ENV.GIT_SSH_COMMAND);
+  try {
+    assert.equal(command.command, 'git');
+    assert.deepEqual(command.args, [
+      'clone',
+      '--depth',
+      '1',
+      '--branch',
+      'release/v1',
+      '--single-branch',
+      'https://github.com/owner/repo.git',
+      '/tmp/run-repo-abc'
+    ]);
+    assert.equal(
+      command.env.GIT_TERMINAL_PROMPT,
+      SAFE_GIT_ENV.GIT_TERMINAL_PROMPT
+    );
+    assert.equal(command.env.GIT_SSH_COMMAND, SAFE_GIT_ENV.GIT_SSH_COMMAND);
+    assert.equal(command.env.RUN_REPO_TEST_SECRET_TOKEN, undefined);
+    assert.equal(command.env.RUN_REPO_TEST_PLAIN, 'safe');
+  } finally {
+    if (previousSecret === undefined) {
+      delete process.env.RUN_REPO_TEST_SECRET_TOKEN;
+    } else {
+      process.env.RUN_REPO_TEST_SECRET_TOKEN = previousSecret;
+    }
+
+    if (previousPlain === undefined) {
+      delete process.env.RUN_REPO_TEST_PLAIN;
+    } else {
+      process.env.RUN_REPO_TEST_PLAIN = previousPlain;
+    }
+  }
 });

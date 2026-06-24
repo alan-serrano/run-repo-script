@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createSafeEnvironment } from './env.js';
 import type { FetchResult, ResolvedRepoTarget } from './types.js';
 
 const SHORTHAND_REGEX =
@@ -97,7 +98,7 @@ export function createGitCloneCommand(
     command: 'git',
     args,
     env: {
-      ...process.env,
+      ...createSafeEnvironment(),
       ...SAFE_GIT_ENV
     }
   };

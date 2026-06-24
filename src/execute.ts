@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
+import { createSafeEnvironment } from './env.js';
 import type { ExecuteOptions, SupportedRunner } from './types.js';
 
 const SUPPORTED_RUNNERS: Record<SupportedRunner, true> = {
@@ -132,23 +133,44 @@ async function confirmExecution(
   });
 
   try {
-    const answer = (await readline.question(question)).trim().toLowerCase();
-    return answer === '' || answer === 'y' || answer === 'yes';
+    const answer = await readline.question(question);
+    return isConfirmationAccepted(answer);
   } finally {
     readline.close();
   }
+}
+
+export function isConfirmationAccepted(answer: string): boolean {
+  const normalizedAnswer = answer.trim().toLowerCase();
+  return (
+    normalizedAnswer === '' ||
+    normalizedAnswer === 'y' ||
+    normalizedAnswer === 'yes'
+  );
+}
+
+function toRunnerScriptPath(scriptRelativePath: string): string {
+  if (scriptRelativePath.startsWith('./')) {
+    return scriptRelativePath;
+  }
+
+  return `./${scriptRelativePath}`;
 }
 
 async function runInstaller(
   runner: SupportedRunner,
   options: ExecuteOptions
 ): Promise<number> {
-  const args = [options.script.relativePath, ...options.forwardArgs];
+  const args = [
+    toRunnerScriptPath(options.script.relativePath),
+    ...options.forwardArgs
+  ];
 
   return await new Promise<number>((resolve, reject) => {
     const child = spawn(runner, args, {
       cwd: options.repoRoot,
-      stdio: 'inherit'
+      stdio: 'inherit',
+      env: createSafeEnvironment()
     });
 
     child.on('error', (error) => {
@@ -166,16 +188,47 @@ async function runInstaller(
   });
 }
 
+export interface ExecuteInstallerDependencies {
+  resolveRunner: (
+    scriptAbsolutePath: string,
+    scriptRelativePath: string,
+    runnerOverride?: string
+  ) => Promise<SupportedRunner>;
+  isRunnerAvailable: (runner: SupportedRunner) => Promise<boolean>;
+  confirmExecution: (
+    runner: SupportedRunner,
+    scriptRelativePath: string,
+    forwardArgs: string[]
+  ) => Promise<boolean>;
+  runInstaller: (
+    runner: SupportedRunner,
+    options: ExecuteOptions
+  ) => Promise<number>;
+}
+
+const defaultDependencies: ExecuteInstallerDependencies = {
+  resolveRunner,
+  isRunnerAvailable,
+  confirmExecution,
+  runInstaller
+};
+
 export async function executeInstaller(
-  options: ExecuteOptions
+  options: ExecuteOptions,
+  dependencyOverrides: Partial<ExecuteInstallerDependencies> = {}
 ): Promise<number> {
-  const runner = await resolveRunner(
+  const dependencies: ExecuteInstallerDependencies = {
+    ...defaultDependencies,
+    ...dependencyOverrides
+  };
+
+  const runner = await dependencies.resolveRunner(
     options.script.absolutePath,
     options.script.relativePath,
     options.runnerOverride
   );
 
-  const available = await isRunnerAvailable(runner);
+  const available = await dependencies.isRunnerAvailable(runner);
   if (!available) {
     throw new Error(
       `Runner "${runner}" is not available on this host. Install it or use --runner with an available runtime.`
@@ -183,7 +236,7 @@ export async function executeInstaller(
   }
 
   if (!options.yes) {
-    const confirmed = await confirmExecution(
+    const confirmed = await dependencies.confirmExecution(
       runner,
       options.script.relativePath,
       options.forwardArgs
@@ -194,5 +247,5 @@ export async function executeInstaller(
     }
   }
 
-  return await runInstaller(runner, options);
+  return await dependencies.runInstaller(runner, options);
 }

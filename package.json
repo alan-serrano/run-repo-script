@@ -10,7 +10,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "pnpm run build && node --test dist/test/*.test.js",
+    "check:no-only": "node scripts/check-no-only.mjs",
+    "test": "pnpm run check:no-only && pnpm run build && node --test dist/test/*.test.js",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --check .",
     "format:write": "prettier --write .",

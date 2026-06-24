@@ -207,13 +207,14 @@ writeFileSync('env-check.txt', value);
   }
 });
 
-test('executeInstaller preserves proxy and cert vars while still stripping secrets', async (t) => {
+test('executeInstaller preserves non-credential proxy and cert vars while still stripping secrets', async (t) => {
   const repoRoot = await withTempRepo(t);
   const markerPath = path.join(repoRoot, 'env-network-check.json');
   const scriptPath = path.join(repoRoot, 'install.js');
 
   const previousHttpProxy = process.env.HTTP_PROXY;
   const previousHttpsProxy = process.env.HTTPS_PROXY;
+  const previousAllProxy = process.env.ALL_PROXY;
   const previousNoProxy = process.env.NO_PROXY;
   const previousSslCertFile = process.env.SSL_CERT_FILE;
   const previousSslCertDir = process.env.SSL_CERT_DIR;
@@ -222,6 +223,7 @@ test('executeInstaller preserves proxy and cert vars while still stripping secre
 
   process.env.HTTP_PROXY = 'http://proxy.internal:8080';
   process.env.HTTPS_PROXY = 'http://proxy.internal:8443';
+  process.env.ALL_PROXY = 'socks5://proxy.internal:1080';
   process.env.NO_PROXY = 'localhost,127.0.0.1';
   process.env.SSL_CERT_FILE = '/etc/ssl/certs/corp.pem';
   process.env.SSL_CERT_DIR = '/etc/ssl/certs';
@@ -234,6 +236,7 @@ test('executeInstaller preserves proxy and cert vars while still stripping secre
 const values = {
   httpProxy: process.env.HTTP_PROXY ?? '',
   httpsProxy: process.env.HTTPS_PROXY ?? '',
+  allProxy: process.env.ALL_PROXY ?? '',
   noProxy: process.env.NO_PROXY ?? '',
   sslCertFile: process.env.SSL_CERT_FILE ?? '',
   sslCertDir: process.env.SSL_CERT_DIR ?? '',
@@ -261,6 +264,7 @@ writeFileSync('env-network-check.json', JSON.stringify(values));
     const values = JSON.parse(await readFile(markerPath, 'utf8')) as {
       httpProxy: string;
       httpsProxy: string;
+      allProxy: string;
       noProxy: string;
       sslCertFile: string;
       sslCertDir: string;
@@ -270,6 +274,7 @@ writeFileSync('env-network-check.json', JSON.stringify(values));
 
     assert.equal(values.httpProxy, 'http://proxy.internal:8080');
     assert.equal(values.httpsProxy, 'http://proxy.internal:8443');
+    assert.equal(values.allProxy, 'socks5://proxy.internal:1080');
     assert.equal(values.noProxy, 'localhost,127.0.0.1');
     assert.equal(values.sslCertFile, '/etc/ssl/certs/corp.pem');
     assert.equal(values.sslCertDir, '/etc/ssl/certs');
@@ -286,6 +291,12 @@ writeFileSync('env-network-check.json', JSON.stringify(values));
       delete process.env.HTTPS_PROXY;
     } else {
       process.env.HTTPS_PROXY = previousHttpsProxy;
+    }
+
+    if (previousAllProxy === undefined) {
+      delete process.env.ALL_PROXY;
+    } else {
+      process.env.ALL_PROXY = previousAllProxy;
     }
 
     if (previousNoProxy === undefined) {
@@ -316,6 +327,111 @@ writeFileSync('env-network-check.json', JSON.stringify(values));
       delete process.env.RUN_REPO_TEST_SECRET_TOKEN;
     } else {
       process.env.RUN_REPO_TEST_SECRET_TOKEN = previousSecret;
+    }
+  }
+});
+
+test('executeInstaller drops credential-bearing proxy vars while preserving NO_PROXY and cert vars', async (t) => {
+  const repoRoot = await withTempRepo(t);
+  const markerPath = path.join(
+    repoRoot,
+    'env-network-credential-proxy-check.json'
+  );
+  const scriptPath = path.join(repoRoot, 'install.js');
+
+  const previousHttpProxy = process.env.HTTP_PROXY;
+  const previousHttpsProxy = process.env.HTTPS_PROXY;
+  const previousAllProxy = process.env.ALL_PROXY;
+  const previousNoProxy = process.env.NO_PROXY;
+  const previousSslCertFile = process.env.SSL_CERT_FILE;
+  const previousNodeExtraCaCerts = process.env.NODE_EXTRA_CA_CERTS;
+
+  process.env.HTTP_PROXY = 'http://user:pass@proxy.internal:8080';
+  process.env.HTTPS_PROXY = 'http://user@proxy.internal:8443';
+  process.env.ALL_PROXY = 'socks5://token:secret@proxy.internal:1080';
+  process.env.NO_PROXY = 'localhost,127.0.0.1';
+  process.env.SSL_CERT_FILE = '/etc/ssl/certs/corp.pem';
+  process.env.NODE_EXTRA_CA_CERTS = '/etc/ssl/certs/corp-node.pem';
+
+  await writeFile(
+    scriptPath,
+    `import { writeFileSync } from 'node:fs';
+const values = {
+  httpProxy: process.env.HTTP_PROXY ?? '',
+  httpsProxy: process.env.HTTPS_PROXY ?? '',
+  allProxy: process.env.ALL_PROXY ?? '',
+  noProxy: process.env.NO_PROXY ?? '',
+  sslCertFile: process.env.SSL_CERT_FILE ?? '',
+  nodeExtraCaCerts: process.env.NODE_EXTRA_CA_CERTS ?? ''
+};
+writeFileSync('env-network-credential-proxy-check.json', JSON.stringify(values));
+`
+  );
+
+  try {
+    const exitCode = await executeInstaller({
+      repoRoot,
+      script: {
+        absolutePath: scriptPath,
+        relativePath: 'install.js'
+      },
+      yes: true,
+      forwardArgs: [],
+      runnerOverride: 'node'
+    });
+
+    assert.equal(exitCode, 0);
+
+    const values = JSON.parse(await readFile(markerPath, 'utf8')) as {
+      httpProxy: string;
+      httpsProxy: string;
+      allProxy: string;
+      noProxy: string;
+      sslCertFile: string;
+      nodeExtraCaCerts: string;
+    };
+
+    assert.equal(values.httpProxy, '');
+    assert.equal(values.httpsProxy, '');
+    assert.equal(values.allProxy, '');
+    assert.equal(values.noProxy, 'localhost,127.0.0.1');
+    assert.equal(values.sslCertFile, '/etc/ssl/certs/corp.pem');
+    assert.equal(values.nodeExtraCaCerts, '/etc/ssl/certs/corp-node.pem');
+  } finally {
+    if (previousHttpProxy === undefined) {
+      delete process.env.HTTP_PROXY;
+    } else {
+      process.env.HTTP_PROXY = previousHttpProxy;
+    }
+
+    if (previousHttpsProxy === undefined) {
+      delete process.env.HTTPS_PROXY;
+    } else {
+      process.env.HTTPS_PROXY = previousHttpsProxy;
+    }
+
+    if (previousAllProxy === undefined) {
+      delete process.env.ALL_PROXY;
+    } else {
+      process.env.ALL_PROXY = previousAllProxy;
+    }
+
+    if (previousNoProxy === undefined) {
+      delete process.env.NO_PROXY;
+    } else {
+      process.env.NO_PROXY = previousNoProxy;
+    }
+
+    if (previousSslCertFile === undefined) {
+      delete process.env.SSL_CERT_FILE;
+    } else {
+      process.env.SSL_CERT_FILE = previousSslCertFile;
+    }
+
+    if (previousNodeExtraCaCerts === undefined) {
+      delete process.env.NODE_EXTRA_CA_CERTS;
+    } else {
+      process.env.NODE_EXTRA_CA_CERTS = previousNodeExtraCaCerts;
     }
   }
 });

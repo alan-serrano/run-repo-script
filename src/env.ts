@@ -46,6 +46,11 @@ const INSTALLER_ENV_ALLOWLIST = [
 
 const INSTALLER_ENV_ALLOWLIST_PREFIXES = ['LC_'] as const;
 const INSTALLER_ENV_ALLOWLIST_SET = normalizeKeySet(INSTALLER_ENV_ALLOWLIST);
+const INSTALLER_PROXY_URL_ENV_KEYS = normalizeKeySet([
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'ALL_PROXY'
+]);
 
 function normalizeKeySet(keys: readonly string[]): Set<string> {
   return new Set(keys.map((key) => key.toUpperCase()));
@@ -99,13 +104,39 @@ function isInstallerEnvironmentKeyAllowed(key: string): boolean {
   );
 }
 
+function hasEmbeddedProxyCredentials(proxyValue: string): boolean {
+  const trimmedProxyValue = proxyValue.trim();
+
+  try {
+    const parsedProxyUrl = new URL(trimmedProxyValue);
+    return parsedProxyUrl.username !== '' || parsedProxyUrl.password !== '';
+  } catch {
+    return trimmedProxyValue.includes('@');
+  }
+}
+
+function shouldDropInstallerProxyEnvironmentKey(
+  key: string,
+  value: string
+): boolean {
+  if (!INSTALLER_PROXY_URL_ENV_KEYS.has(key.toUpperCase())) {
+    return false;
+  }
+
+  return hasEmbeddedProxyCredentials(value);
+}
+
 export function createInstallerEnvironment(
   sourceEnv: NodeJS.ProcessEnv = process.env
 ): NodeJS.ProcessEnv {
   const safeEnv: NodeJS.ProcessEnv = {};
 
   for (const [key, value] of Object.entries(sourceEnv)) {
-    if (value === undefined || !isInstallerEnvironmentKeyAllowed(key)) {
+    if (
+      value === undefined ||
+      !isInstallerEnvironmentKeyAllowed(key) ||
+      shouldDropInstallerProxyEnvironmentKey(key, value)
+    ) {
       continue;
     }
 

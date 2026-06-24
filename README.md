@@ -36,4 +36,4 @@ run-repo owner/repo --runner node --yes
 - You must confirm execution unless `--yes` is passed.
 - Clone is non-interactive (`GIT_TERMINAL_PROMPT=0`) to avoid hanging auth prompts.
 - Clone keeps standard GitHub auth token env vars (`GH_TOKEN`, `GITHUB_TOKEN`) so private repository fetches can succeed.
-- Installer execution runs with a strict allowlist environment (for example: `PATH`, `HOME`, and temp/locale variables only).
+- Installer execution runs with a strict allowlist environment (for example: `PATH`, `HOME`, temp/locale vars, plus standard proxy/certificate vars like `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `SSL_CERT_FILE`, and `NODE_EXTRA_CA_CERTS`).

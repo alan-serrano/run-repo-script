@@ -207,6 +207,119 @@ writeFileSync('env-check.txt', value);
   }
 });
 
+test('executeInstaller preserves proxy and cert vars while still stripping secrets', async (t) => {
+  const repoRoot = await withTempRepo(t);
+  const markerPath = path.join(repoRoot, 'env-network-check.json');
+  const scriptPath = path.join(repoRoot, 'install.js');
+
+  const previousHttpProxy = process.env.HTTP_PROXY;
+  const previousHttpsProxy = process.env.HTTPS_PROXY;
+  const previousNoProxy = process.env.NO_PROXY;
+  const previousSslCertFile = process.env.SSL_CERT_FILE;
+  const previousSslCertDir = process.env.SSL_CERT_DIR;
+  const previousNodeExtraCaCerts = process.env.NODE_EXTRA_CA_CERTS;
+  const previousSecret = process.env.RUN_REPO_TEST_SECRET_TOKEN;
+
+  process.env.HTTP_PROXY = 'http://proxy.internal:8080';
+  process.env.HTTPS_PROXY = 'http://proxy.internal:8443';
+  process.env.NO_PROXY = 'localhost,127.0.0.1';
+  process.env.SSL_CERT_FILE = '/etc/ssl/certs/corp.pem';
+  process.env.SSL_CERT_DIR = '/etc/ssl/certs';
+  process.env.NODE_EXTRA_CA_CERTS = '/etc/ssl/certs/corp-node.pem';
+  process.env.RUN_REPO_TEST_SECRET_TOKEN = 'do-not-leak';
+
+  await writeFile(
+    scriptPath,
+    `import { writeFileSync } from 'node:fs';
+const values = {
+  httpProxy: process.env.HTTP_PROXY ?? '',
+  httpsProxy: process.env.HTTPS_PROXY ?? '',
+  noProxy: process.env.NO_PROXY ?? '',
+  sslCertFile: process.env.SSL_CERT_FILE ?? '',
+  sslCertDir: process.env.SSL_CERT_DIR ?? '',
+  nodeExtraCaCerts: process.env.NODE_EXTRA_CA_CERTS ?? '',
+  secret: process.env.RUN_REPO_TEST_SECRET_TOKEN ?? ''
+};
+writeFileSync('env-network-check.json', JSON.stringify(values));
+`
+  );
+
+  try {
+    const exitCode = await executeInstaller({
+      repoRoot,
+      script: {
+        absolutePath: scriptPath,
+        relativePath: 'install.js'
+      },
+      yes: true,
+      forwardArgs: [],
+      runnerOverride: 'node'
+    });
+
+    assert.equal(exitCode, 0);
+
+    const values = JSON.parse(await readFile(markerPath, 'utf8')) as {
+      httpProxy: string;
+      httpsProxy: string;
+      noProxy: string;
+      sslCertFile: string;
+      sslCertDir: string;
+      nodeExtraCaCerts: string;
+      secret: string;
+    };
+
+    assert.equal(values.httpProxy, 'http://proxy.internal:8080');
+    assert.equal(values.httpsProxy, 'http://proxy.internal:8443');
+    assert.equal(values.noProxy, 'localhost,127.0.0.1');
+    assert.equal(values.sslCertFile, '/etc/ssl/certs/corp.pem');
+    assert.equal(values.sslCertDir, '/etc/ssl/certs');
+    assert.equal(values.nodeExtraCaCerts, '/etc/ssl/certs/corp-node.pem');
+    assert.equal(values.secret, '');
+  } finally {
+    if (previousHttpProxy === undefined) {
+      delete process.env.HTTP_PROXY;
+    } else {
+      process.env.HTTP_PROXY = previousHttpProxy;
+    }
+
+    if (previousHttpsProxy === undefined) {
+      delete process.env.HTTPS_PROXY;
+    } else {
+      process.env.HTTPS_PROXY = previousHttpsProxy;
+    }
+
+    if (previousNoProxy === undefined) {
+      delete process.env.NO_PROXY;
+    } else {
+      process.env.NO_PROXY = previousNoProxy;
+    }
+
+    if (previousSslCertFile === undefined) {
+      delete process.env.SSL_CERT_FILE;
+    } else {
+      process.env.SSL_CERT_FILE = previousSslCertFile;
+    }
+
+    if (previousSslCertDir === undefined) {
+      delete process.env.SSL_CERT_DIR;
+    } else {
+      process.env.SSL_CERT_DIR = previousSslCertDir;
+    }
+
+    if (previousNodeExtraCaCerts === undefined) {
+      delete process.env.NODE_EXTRA_CA_CERTS;
+    } else {
+      process.env.NODE_EXTRA_CA_CERTS = previousNodeExtraCaCerts;
+    }
+
+    if (previousSecret === undefined) {
+      delete process.env.RUN_REPO_TEST_SECRET_TOKEN;
+    } else {
+      process.env.RUN_REPO_TEST_SECRET_TOKEN = previousSecret;
+    }
+  }
+});
+
 test('executeInstaller still strips GitHub auth tokens from child environment', async (t) => {
   const repoRoot = await withTempRepo(t);
   const markerPath = path.join(repoRoot, 'github-token-check.txt');

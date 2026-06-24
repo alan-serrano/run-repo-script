@@ -106,9 +106,12 @@ function isInstallerEnvironmentKeyAllowed(key: string): boolean {
 
 function hasEmbeddedProxyCredentials(proxyValue: string): boolean {
   const trimmedProxyValue = proxyValue.trim();
+  const proxyUrlToParse = trimmedProxyValue.includes('://')
+    ? trimmedProxyValue
+    : `http://${trimmedProxyValue}`;
 
   try {
-    const parsedProxyUrl = new URL(trimmedProxyValue);
+    const parsedProxyUrl = new URL(proxyUrlToParse);
     return parsedProxyUrl.username !== '' || parsedProxyUrl.password !== '';
   } catch {
     return trimmedProxyValue.includes('@');

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  createRunnerEnvironment,
   executeInstaller,
   isConfirmationAccepted,
   isRunnerAvailable,
@@ -117,7 +118,7 @@ test('isConfirmationAccepted treats empty answer as yes by default', () => {
   assert.equal(isConfirmationAccepted('n'), false);
 });
 
-test('executeInstaller bypasses prompt with --yes and forwards args', async (t) => {
+test('executeInstaller bypasses prompt with dangerous skip confirmation and forwards args', async (t) => {
   const repoRoot = await withTempRepo(t);
   const markerPath = path.join(repoRoot, 'argv.txt');
   const scriptPath = path.join(repoRoot, 'install.js');
@@ -133,7 +134,7 @@ test('executeInstaller bypasses prompt with --yes and forwards args', async (t) 
       absolutePath: scriptPath,
       relativePath: 'install.js'
     },
-    yes: true,
+    dangerouslySkipConfirmation: true,
     forwardArgs: ['--target', 'local'],
     runnerOverride: undefined
   });
@@ -160,7 +161,7 @@ test('executeInstaller prevents option injection for leading-dash script names',
       absolutePath: scriptPath,
       relativePath: '-c'
     },
-    yes: true,
+    dangerouslySkipConfirmation: true,
     forwardArgs: [],
     runnerOverride: 'bash'
   });
@@ -191,7 +192,7 @@ writeFileSync('env-check.txt', value);
         absolutePath: scriptPath,
         relativePath: 'install.js'
       },
-      yes: true,
+      dangerouslySkipConfirmation: true,
       forwardArgs: [],
       runnerOverride: 'node'
     });
@@ -254,7 +255,7 @@ writeFileSync('env-network-check.json', JSON.stringify(values));
         absolutePath: scriptPath,
         relativePath: 'install.js'
       },
-      yes: true,
+      dangerouslySkipConfirmation: true,
       forwardArgs: [],
       runnerOverride: 'node'
     });
@@ -375,7 +376,7 @@ writeFileSync('env-network-credential-proxy-check.json', JSON.stringify(values))
         absolutePath: scriptPath,
         relativePath: 'install.js'
       },
-      yes: true,
+      dangerouslySkipConfirmation: true,
       forwardArgs: [],
       runnerOverride: 'node'
     });
@@ -465,7 +466,7 @@ writeFileSync('env-bare-proxy-check.json', JSON.stringify(values));
         absolutePath: scriptPath,
         relativePath: 'install.js'
       },
-      yes: true,
+      dangerouslySkipConfirmation: true,
       forwardArgs: [],
       runnerOverride: 'node'
     });
@@ -516,7 +517,7 @@ writeFileSync('github-token-check.txt', value);
         absolutePath: scriptPath,
         relativePath: 'install.js'
       },
-      yes: true,
+      dangerouslySkipConfirmation: true,
       forwardArgs: [],
       runnerOverride: 'node'
     });
@@ -554,7 +555,7 @@ writeFileSync('database-url-check.txt', value);
         absolutePath: scriptPath,
         relativePath: 'install.js'
       },
-      yes: true,
+      dangerouslySkipConfirmation: true,
       forwardArgs: [],
       runnerOverride: 'node'
     });
@@ -570,7 +571,7 @@ writeFileSync('database-url-check.txt', value);
   }
 });
 
-test('executeInstaller uses confirmation path when --yes is not passed', async () => {
+test('executeInstaller uses confirmation path when dangerous skip confirmation is not passed', async () => {
   let confirmationCalled = false;
 
   const exitCode = await executeInstaller(
@@ -580,7 +581,7 @@ test('executeInstaller uses confirmation path when --yes is not passed', async (
         absolutePath: '/repo/install.js',
         relativePath: 'install.js'
       },
-      yes: false,
+      dangerouslySkipConfirmation: false,
       forwardArgs: ['--target', 'local'],
       runnerOverride: undefined
     },
@@ -613,7 +614,7 @@ test('executeInstaller fails fast with clear error in non-interactive confirmati
               absolutePath: '/repo/install.js',
               relativePath: 'install.js'
             },
-            yes: false,
+            dangerouslySkipConfirmation: false,
             forwardArgs: [],
             runnerOverride: undefined
           },
@@ -623,9 +624,17 @@ test('executeInstaller fails fast with clear error in non-interactive confirmati
             runInstaller: async () => 0
           }
         ),
-      /Confirmation requires an interactive terminal\. Re-run with --yes/
+      /Confirmation requires an interactive terminal\. Re-run with --dangerously-skip-confirmation/
     );
   });
+});
+
+test('createRunnerEnvironment enables documented zx verbosity via ZX_VERBOSE=true', () => {
+  const nodeEnv = createRunnerEnvironment('node', { PATH: '/usr/bin' });
+  assert.equal(nodeEnv.ZX_VERBOSE, undefined);
+
+  const zxEnv = createRunnerEnvironment('zx', { PATH: '/usr/bin' });
+  assert.equal(zxEnv.ZX_VERBOSE, 'true');
 });
 
 test('executeInstaller fails deterministically when runner is unavailable', async () => {
@@ -638,7 +647,7 @@ test('executeInstaller fails deterministically when runner is unavailable', asyn
             absolutePath: '/repo/install.mjs',
             relativePath: 'install.mjs'
           },
-          yes: true,
+          dangerouslySkipConfirmation: true,
           forwardArgs: [],
           runnerOverride: undefined
         },
@@ -665,7 +674,7 @@ test('executeInstaller rejects when user declines confirmation', async () => {
             absolutePath: '/repo/install.js',
             relativePath: 'install.js'
           },
-          yes: false,
+          dangerouslySkipConfirmation: false,
           forwardArgs: [],
           runnerOverride: undefined
         },
@@ -693,7 +702,7 @@ test('executeInstaller returns non-zero child exit codes', async () => {
         absolutePath: '/repo/install.js',
         relativePath: 'install.js'
       },
-      yes: true,
+      dangerouslySkipConfirmation: true,
       forwardArgs: [],
       runnerOverride: undefined
     },

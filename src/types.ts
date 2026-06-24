@@ -2,7 +2,7 @@ export interface RunConfig {
   repoTarget: string;
   script?: string;
   runner?: string;
-  yes: boolean;
+  dangerouslySkipConfirmation: boolean;
   help: boolean;
   forwardArgs: string[];
 }
@@ -30,6 +30,6 @@ export interface ExecuteOptions {
   repoRoot: string;
   script: DiscoveryResult;
   runnerOverride?: string;
-  yes: boolean;
+  dangerouslySkipConfirmation: boolean;
   forwardArgs: string[];
 }

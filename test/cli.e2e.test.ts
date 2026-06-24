@@ -102,7 +102,13 @@ test('e2e happy path: runCli executes installer and cleans workspace', async (t)
 
   const stderrMessages: string[] = [];
   const exitCode = await runCli(
-    ['owner/repo', '--yes', '--', '--target', 'local'],
+    [
+      'owner/repo',
+      '--dangerously-skip-confirmation',
+      '--',
+      '--target',
+      'local'
+    ],
     {
       fetchRepository: async () => ({
         workspaceDir,
@@ -131,22 +137,25 @@ test('e2e error path: missing installer returns failure and cleanup', async (t) 
   const workspaceDir = await createWorkspace(t);
   const stderrMessages: string[] = [];
 
-  const exitCode = await runCli(['owner/repo', '--yes'], {
-    fetchRepository: async () => ({
-      workspaceDir,
-      resolvedTarget: {
-        owner: 'owner',
-        repo: 'repo',
-        cloneUrl: 'https://github.com/owner/repo.git'
-      }
-    }),
-    stderr: {
-      write(chunk: string) {
-        stderrMessages.push(chunk);
-        return true;
+  const exitCode = await runCli(
+    ['owner/repo', '--dangerously-skip-confirmation'],
+    {
+      fetchRepository: async () => ({
+        workspaceDir,
+        resolvedTarget: {
+          owner: 'owner',
+          repo: 'repo',
+          cloneUrl: 'https://github.com/owner/repo.git'
+        }
+      }),
+      stderr: {
+        write(chunk: string) {
+          stderrMessages.push(chunk);
+          return true;
+        }
       }
     }
-  });
+  );
 
   assert.equal(exitCode, 1);
   assert.match(stderrMessages.join(''), /No installer script found/);
@@ -158,27 +167,30 @@ test('e2e error path: unavailable runner returns deterministic failure', async (
   await writeFile(path.join(workspaceDir, 'install.js'), 'console.log("ok")\n');
 
   const stderrMessages: string[] = [];
-  const exitCode = await runCli(['owner/repo', '--yes'], {
-    fetchRepository: async () => ({
-      workspaceDir,
-      resolvedTarget: {
-        owner: 'owner',
-        repo: 'repo',
-        cloneUrl: 'https://github.com/owner/repo.git'
-      }
-    }),
-    executeInstaller: async () => {
-      throw new Error(
-        'Runner "zx" is not available on this host. Install it or use --runner with an available runtime.'
-      );
-    },
-    stderr: {
-      write(chunk: string) {
-        stderrMessages.push(chunk);
-        return true;
+  const exitCode = await runCli(
+    ['owner/repo', '--dangerously-skip-confirmation'],
+    {
+      fetchRepository: async () => ({
+        workspaceDir,
+        resolvedTarget: {
+          owner: 'owner',
+          repo: 'repo',
+          cloneUrl: 'https://github.com/owner/repo.git'
+        }
+      }),
+      executeInstaller: async () => {
+        throw new Error(
+          'Runner "zx" is not available on this host. Install it or use --runner with an available runtime.'
+        );
+      },
+      stderr: {
+        write(chunk: string) {
+          stderrMessages.push(chunk);
+          return true;
+        }
       }
     }
-  });
+  );
 
   assert.equal(exitCode, 1);
   assert.match(stderrMessages.join(''), /Runner "zx" is not available/);
@@ -213,7 +225,7 @@ test('e2e confirmation contract: decline returns exit code 1', async (t) => {
   assert.match(stderrMessages.join(''), /Execution cancelled by user/);
 });
 
-test('e2e confirmation contract: non-interactive mode fails fast with --yes guidance', async (t) => {
+test('e2e confirmation contract: non-interactive mode fails fast with dangerous flag guidance', async (t) => {
   const workspaceDir = await createWorkspace(t);
   await writeFile(path.join(workspaceDir, 'install.js'), 'console.log("ok")\n');
 
@@ -242,31 +254,34 @@ test('e2e confirmation contract: non-interactive mode fails fast with --yes guid
 
   const stderrText = stderrMessages.join('');
   assert.match(stderrText, /Confirmation requires an interactive terminal/);
-  assert.match(stderrText, /--yes/);
+  assert.match(stderrText, /--dangerously-skip-confirmation/);
 });
 
 test('e2e exit code propagation: runCli forwards non-zero child code', async (t) => {
   const workspaceDir = await createWorkspace(t);
   await writeFile(path.join(workspaceDir, 'install.js'), 'console.log("ok")\n');
 
-  const exitCode = await runCli(['owner/repo', '--yes'], {
-    fetchRepository: async () => ({
-      workspaceDir,
-      resolvedTarget: {
-        owner: 'owner',
-        repo: 'repo',
-        cloneUrl: 'https://github.com/owner/repo.git'
-      }
-    }),
-    executeInstaller: async () => 42
-  });
+  const exitCode = await runCli(
+    ['owner/repo', '--dangerously-skip-confirmation'],
+    {
+      fetchRepository: async () => ({
+        workspaceDir,
+        resolvedTarget: {
+          owner: 'owner',
+          repo: 'repo',
+          cloneUrl: 'https://github.com/owner/repo.git'
+        }
+      }),
+      executeInstaller: async () => 42
+    }
+  );
 
   assert.equal(exitCode, 42);
 });
 
 test('e2e error path: rejected SSH input returns failure', async () => {
   const stderrMessages: string[] = [];
-  const exitCode = await runCli(['git@github.com:owner/repo.git', '--yes'], {
+  const exitCode = await runCli(['git@github.com:owner/repo.git'], {
     stderr: {
       write(chunk: string) {
         stderrMessages.push(chunk);
@@ -277,6 +292,22 @@ test('e2e error path: rejected SSH input returns failure', async () => {
 
   assert.equal(exitCode, 1);
   assert.match(stderrMessages.join(''), /SSH syntax is not supported in v1/);
+});
+
+test('e2e cli contract: legacy --yes flag is rejected', async () => {
+  const stderrMessages: string[] = [];
+
+  const exitCode = await runCli(['owner/repo', '--yes'], {
+    stderr: {
+      write(chunk: string) {
+        stderrMessages.push(chunk);
+        return true;
+      }
+    }
+  });
+
+  assert.equal(exitCode, 1);
+  assert.match(stderrMessages.join(''), /Unknown option '--yes'/);
 });
 
 test('e2e build entrypoint: compiled cli responds to --help', async () => {

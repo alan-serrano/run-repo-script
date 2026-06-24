@@ -12,7 +12,7 @@ const SUPPORTED_RUNNERS: Record<SupportedRunner, true> = {
 };
 
 const NON_INTERACTIVE_CONFIRMATION_ERROR =
-  'Confirmation requires an interactive terminal. Re-run with --yes in non-interactive environments.';
+  'Confirmation requires an interactive terminal. Re-run with --dangerously-skip-confirmation in non-interactive environments.';
 
 function toSupportedRunner(
   candidate: string | undefined
@@ -182,7 +182,7 @@ async function runInstaller(
     const child = spawn(runner, args, {
       cwd: options.repoRoot,
       stdio: 'inherit',
-      env: createInstallerEnvironment()
+      env: createRunnerEnvironment(runner)
     });
 
     child.on('error', (error) => {
@@ -198,6 +198,18 @@ async function runInstaller(
       resolve(code ?? 1);
     });
   });
+}
+
+export function createRunnerEnvironment(
+  runner: SupportedRunner,
+  sourceEnv: NodeJS.ProcessEnv = process.env
+): NodeJS.ProcessEnv {
+  const env = createInstallerEnvironment(sourceEnv);
+  if (runner === 'zx') {
+    env.ZX_VERBOSE = 'true';
+  }
+
+  return env;
 }
 
 export interface ExecuteInstallerDependencies {
@@ -247,7 +259,7 @@ export async function executeInstaller(
     );
   }
 
-  if (!options.yes) {
+  if (!options.dangerouslySkipConfirmation) {
     const confirmed = await dependencies.confirmExecution(
       runner,
       options.script.relativePath,

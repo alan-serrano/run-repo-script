@@ -18,7 +18,7 @@ export function parseRunConfig(argv: string[]): RunConfig {
       runner: {
         type: 'string'
       },
-      yes: {
+      'dangerously-skip-confirmation': {
         type: 'boolean',
         default: false
       },
@@ -38,7 +38,7 @@ export function parseRunConfig(argv: string[]): RunConfig {
     repoTarget,
     script: parsed.values.script,
     runner: parsed.values.runner,
-    yes: parsed.values.yes,
+    dangerouslySkipConfirmation: parsed.values['dangerously-skip-confirmation'],
     help: parsed.values.help,
     forwardArgs
   };
@@ -46,7 +46,7 @@ export function parseRunConfig(argv: string[]): RunConfig {
 
 function printUsage(): void {
   console.log(
-    'Usage: run-repo <owner/repo[#ref]|https://github.com/owner/repo[.git][#ref]> [--script <path>] [--runner <node|bash|zx>] [--yes] [-- <args...>]'
+    'Usage: run-repo <owner/repo[#ref]|https://github.com/owner/repo[.git][#ref]> [--script <path>] [--runner <node|bash|zx>] [--dangerously-skip-confirmation] [-- <args...>]'
   );
 }
 
@@ -120,7 +120,7 @@ export async function runCli(
       repoRoot: fetchedRepo.workspaceDir,
       script,
       runnerOverride: config.runner,
-      yes: config.yes,
+      dangerouslySkipConfirmation: config.dangerouslySkipConfirmation,
       forwardArgs: config.forwardArgs
     });
   } catch (error) {

@@ -169,7 +169,7 @@ function hasEmbeddedProxyCredentials(proxyValue: string): boolean {
   }
 }
 
-function shouldDropInstallerProxyEnvironmentKey(
+function shouldDropCredentialBearingProxyEnvironmentKey(
   key: string,
   value: string
 ): boolean {
@@ -189,7 +189,7 @@ export function createInstallerEnvironment(
     if (
       value === undefined ||
       !isInstallerEnvironmentKeyAllowed(key) ||
-      shouldDropInstallerProxyEnvironmentKey(key, value)
+      shouldDropCredentialBearingProxyEnvironmentKey(key, value)
     ) {
       continue;
     }
@@ -206,7 +206,11 @@ export function createGitCloneEnvironment(
   const safeEnv: NodeJS.ProcessEnv = {};
 
   for (const [key, value] of Object.entries(sourceEnv)) {
-    if (value === undefined || !isGitCloneEnvironmentKeyAllowed(key)) {
+    if (
+      value === undefined ||
+      !isGitCloneEnvironmentKeyAllowed(key) ||
+      shouldDropCredentialBearingProxyEnvironmentKey(key, value)
+    ) {
       continue;
     }
 

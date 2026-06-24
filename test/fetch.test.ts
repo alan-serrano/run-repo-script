@@ -46,11 +46,19 @@ test('createGitCloneCommand builds shallow clone command with minimal clone env'
   const previousDatabaseUrl = process.env.DATABASE_URL;
   const previousGhToken = process.env.GH_TOKEN;
   const previousGithubToken = process.env.GITHUB_TOKEN;
+  const previousHttpProxy = process.env.HTTP_PROXY;
+  const previousHttpsProxy = process.env.HTTPS_PROXY;
+  const previousAllProxy = process.env.ALL_PROXY;
+  const previousNoProxy = process.env.NO_PROXY;
   process.env.RUN_REPO_TEST_SECRET_TOKEN = 'fixture-sensitive';
   process.env.RUN_REPO_TEST_PLAIN = 'safe';
   process.env.DATABASE_URL = 'fixture-db-url';
   process.env.GH_TOKEN = 'fixture-gh-token';
   process.env.GITHUB_TOKEN = 'fixture-github-token';
+  process.env.HTTP_PROXY = 'http://demo-user:demo-pass@proxy.internal:8080';
+  process.env.HTTPS_PROXY = 'http://proxy.internal:8443';
+  process.env.ALL_PROXY = 'socks5://demo-token:demo-secret@proxy.internal:1080';
+  process.env.NO_PROXY = 'localhost,127.0.0.1';
 
   const command = createGitCloneCommand(
     {
@@ -84,6 +92,10 @@ test('createGitCloneCommand builds shallow clone command with minimal clone env'
     assert.equal(command.env.DATABASE_URL, undefined);
     assert.equal(command.env.GH_TOKEN, 'fixture-gh-token');
     assert.equal(command.env.GITHUB_TOKEN, 'fixture-github-token');
+    assert.equal(command.env.HTTP_PROXY, undefined);
+    assert.equal(command.env.HTTPS_PROXY, 'http://proxy.internal:8443');
+    assert.equal(command.env.ALL_PROXY, undefined);
+    assert.equal(command.env.NO_PROXY, 'localhost,127.0.0.1');
   } finally {
     if (previousSecret === undefined) {
       delete process.env.RUN_REPO_TEST_SECRET_TOKEN;
@@ -113,6 +125,30 @@ test('createGitCloneCommand builds shallow clone command with minimal clone env'
       delete process.env.GITHUB_TOKEN;
     } else {
       process.env.GITHUB_TOKEN = previousGithubToken;
+    }
+
+    if (previousHttpProxy === undefined) {
+      delete process.env.HTTP_PROXY;
+    } else {
+      process.env.HTTP_PROXY = previousHttpProxy;
+    }
+
+    if (previousHttpsProxy === undefined) {
+      delete process.env.HTTPS_PROXY;
+    } else {
+      process.env.HTTPS_PROXY = previousHttpsProxy;
+    }
+
+    if (previousAllProxy === undefined) {
+      delete process.env.ALL_PROXY;
+    } else {
+      process.env.ALL_PROXY = previousAllProxy;
+    }
+
+    if (previousNoProxy === undefined) {
+      delete process.env.NO_PROXY;
+    } else {
+      process.env.NO_PROXY = previousNoProxy;
     }
   }
 });

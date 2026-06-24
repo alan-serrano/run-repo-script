@@ -15,6 +15,54 @@ async function createWorkspace(t: test.TestContext): Promise<string> {
   return workspaceDir;
 }
 
+async function withNonInteractiveTty<T>(action: () => Promise<T>): Promise<T> {
+  const hadStdinIsTTY = Object.prototype.hasOwnProperty.call(
+    process.stdin,
+    'isTTY'
+  );
+  const hadStdoutIsTTY = Object.prototype.hasOwnProperty.call(
+    process.stdout,
+    'isTTY'
+  );
+  const previousStdinIsTTY = process.stdin.isTTY;
+  const previousStdoutIsTTY = process.stdout.isTTY;
+
+  Object.defineProperty(process.stdin, 'isTTY', {
+    value: false,
+    configurable: true,
+    writable: true
+  });
+  Object.defineProperty(process.stdout, 'isTTY', {
+    value: false,
+    configurable: true,
+    writable: true
+  });
+
+  try {
+    return await action();
+  } finally {
+    if (hadStdinIsTTY) {
+      Object.defineProperty(process.stdin, 'isTTY', {
+        value: previousStdinIsTTY,
+        configurable: true,
+        writable: true
+      });
+    } else {
+      delete (process.stdin as unknown as { isTTY?: boolean }).isTTY;
+    }
+
+    if (hadStdoutIsTTY) {
+      Object.defineProperty(process.stdout, 'isTTY', {
+        value: previousStdoutIsTTY,
+        configurable: true,
+        writable: true
+      });
+    } else {
+      delete (process.stdout as unknown as { isTTY?: boolean }).isTTY;
+    }
+  }
+}
+
 async function runNodeScript(
   scriptPath: string,
   args: string[]
@@ -163,6 +211,38 @@ test('e2e confirmation contract: decline returns exit code 1', async (t) => {
 
   assert.equal(exitCode, 1);
   assert.match(stderrMessages.join(''), /Execution cancelled by user/);
+});
+
+test('e2e confirmation contract: non-interactive mode fails fast with --yes guidance', async (t) => {
+  const workspaceDir = await createWorkspace(t);
+  await writeFile(path.join(workspaceDir, 'install.js'), 'console.log("ok")\n');
+
+  const stderrMessages: string[] = [];
+
+  await withNonInteractiveTty(async () => {
+    const exitCode = await runCli(['owner/repo'], {
+      fetchRepository: async () => ({
+        workspaceDir,
+        resolvedTarget: {
+          owner: 'owner',
+          repo: 'repo',
+          cloneUrl: 'https://github.com/owner/repo.git'
+        }
+      }),
+      stderr: {
+        write(chunk: string) {
+          stderrMessages.push(chunk);
+          return true;
+        }
+      }
+    });
+
+    assert.equal(exitCode, 1);
+  });
+
+  const stderrText = stderrMessages.join('');
+  assert.match(stderrText, /Confirmation requires an interactive terminal/);
+  assert.match(stderrText, /--yes/);
 });
 
 test('e2e exit code propagation: runCli forwards non-zero child code', async (t) => {

@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { createSafeEnvironment } from './env.js';
+import { createInstallerEnvironment } from './env.js';
 import type { ExecuteOptions, SupportedRunner } from './types.js';
 
 const SUPPORTED_RUNNERS: Record<SupportedRunner, true> = {
@@ -10,6 +10,9 @@ const SUPPORTED_RUNNERS: Record<SupportedRunner, true> = {
   bash: true,
   zx: true
 };
+
+const NON_INTERACTIVE_CONFIRMATION_ERROR =
+  'Confirmation requires an interactive terminal. Re-run with --yes in non-interactive environments.';
 
 function toSupportedRunner(
   candidate: string | undefined
@@ -124,6 +127,15 @@ async function confirmExecution(
   scriptRelativePath: string,
   forwardArgs: string[]
 ): Promise<boolean> {
+  if (
+    !process.stdin.isTTY ||
+    !process.stdout.isTTY ||
+    process.stdin.destroyed ||
+    process.stdin.readableEnded
+  ) {
+    throw new Error(NON_INTERACTIVE_CONFIRMATION_ERROR);
+  }
+
   const argsText = forwardArgs.length > 0 ? ` ${forwardArgs.join(' ')}` : '';
   const question = `About to run: ${runner} ${scriptRelativePath}${argsText}\nContinue? [Y/n] `;
 
@@ -170,7 +182,7 @@ async function runInstaller(
     const child = spawn(runner, args, {
       cwd: options.repoRoot,
       stdio: 'inherit',
-      env: createSafeEnvironment()
+      env: createInstallerEnvironment()
     });
 
     child.on('error', (error) => {

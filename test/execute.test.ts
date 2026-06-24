@@ -18,6 +18,54 @@ async function withTempRepo(t: test.TestContext): Promise<string> {
   return repoRoot;
 }
 
+async function withNonInteractiveTty<T>(action: () => Promise<T>): Promise<T> {
+  const hadStdinIsTTY = Object.prototype.hasOwnProperty.call(
+    process.stdin,
+    'isTTY'
+  );
+  const hadStdoutIsTTY = Object.prototype.hasOwnProperty.call(
+    process.stdout,
+    'isTTY'
+  );
+  const previousStdinIsTTY = process.stdin.isTTY;
+  const previousStdoutIsTTY = process.stdout.isTTY;
+
+  Object.defineProperty(process.stdin, 'isTTY', {
+    value: false,
+    configurable: true,
+    writable: true
+  });
+  Object.defineProperty(process.stdout, 'isTTY', {
+    value: false,
+    configurable: true,
+    writable: true
+  });
+
+  try {
+    return await action();
+  } finally {
+    if (hadStdinIsTTY) {
+      Object.defineProperty(process.stdin, 'isTTY', {
+        value: previousStdinIsTTY,
+        configurable: true,
+        writable: true
+      });
+    } else {
+      delete (process.stdin as unknown as { isTTY?: boolean }).isTTY;
+    }
+
+    if (hadStdoutIsTTY) {
+      Object.defineProperty(process.stdout, 'isTTY', {
+        value: previousStdoutIsTTY,
+        configurable: true,
+        writable: true
+      });
+    } else {
+      delete (process.stdout as unknown as { isTTY?: boolean }).isTTY;
+    }
+  }
+}
+
 test('resolveRunner prefers --runner override', async (t) => {
   const repoRoot = await withTempRepo(t);
   const scriptPath = path.join(repoRoot, 'install.sh');
@@ -197,6 +245,44 @@ writeFileSync('github-token-check.txt', value);
   }
 });
 
+test('executeInstaller strips DATABASE_URL from child environment', async (t) => {
+  const repoRoot = await withTempRepo(t);
+  const markerPath = path.join(repoRoot, 'database-url-check.txt');
+  const scriptPath = path.join(repoRoot, 'install.js');
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  process.env.DATABASE_URL = 'postgres://user:pass@localhost:5432/app';
+
+  await writeFile(
+    scriptPath,
+    `import { writeFileSync } from 'node:fs';
+const value = process.env.DATABASE_URL ?? '';
+writeFileSync('database-url-check.txt', value);
+`
+  );
+
+  try {
+    const exitCode = await executeInstaller({
+      repoRoot,
+      script: {
+        absolutePath: scriptPath,
+        relativePath: 'install.js'
+      },
+      yes: true,
+      forwardArgs: [],
+      runnerOverride: 'node'
+    });
+
+    assert.equal(exitCode, 0);
+    assert.equal(await readFile(markerPath, 'utf8'), '');
+  } finally {
+    if (previousDatabaseUrl === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = previousDatabaseUrl;
+    }
+  }
+});
+
 test('executeInstaller uses confirmation path when --yes is not passed', async () => {
   let confirmationCalled = false;
 
@@ -227,6 +313,32 @@ test('executeInstaller uses confirmation path when --yes is not passed', async (
 
   assert.equal(exitCode, 0);
   assert.equal(confirmationCalled, true);
+});
+
+test('executeInstaller fails fast with clear error in non-interactive confirmation path', async () => {
+  await withNonInteractiveTty(async () => {
+    await assert.rejects(
+      () =>
+        executeInstaller(
+          {
+            repoRoot: '/repo',
+            script: {
+              absolutePath: '/repo/install.js',
+              relativePath: 'install.js'
+            },
+            yes: false,
+            forwardArgs: [],
+            runnerOverride: undefined
+          },
+          {
+            resolveRunner: async () => 'node',
+            isRunnerAvailable: async () => true,
+            runInstaller: async () => 0
+          }
+        ),
+      /Confirmation requires an interactive terminal\. Re-run with --yes/
+    );
+  });
 });
 
 test('executeInstaller fails deterministically when runner is unavailable', async () => {

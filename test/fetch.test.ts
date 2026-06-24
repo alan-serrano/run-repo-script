@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict';
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile
+} from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import {
+  cloneIntoDirectory,
   createGitCloneCommand,
   resolveGitHubTarget,
   SAFE_GIT_ENV
@@ -219,6 +230,115 @@ test('createGitCloneCommand drops bare credential-bearing proxy values while pre
       delete process.env.GITHUB_TOKEN;
     } else {
       process.env.GITHUB_TOKEN = previousGithubToken;
+    }
+  }
+});
+
+test('cloneIntoDirectory forwards only safe clone env values to the spawned clone process', async (t) => {
+  const workspaceDir = await mkdtemp(
+    path.join(tmpdir(), 'run-repo-fetch-clone-boundary-')
+  );
+  t.after(async () => {
+    await rm(workspaceDir, { recursive: true, force: true });
+  });
+
+  const binDir = path.join(workspaceDir, 'bin');
+  await mkdir(binDir, { recursive: true });
+
+  const envCapturePath = path.join(workspaceDir, 'git-env-capture.json');
+  const fakeGitPath = path.join(binDir, 'git');
+  const fakeGitScript = `#!/usr/bin/env node
+import { writeFileSync } from 'node:fs';
+
+const missing = '<missing>';
+const payload = {
+  args: process.argv.slice(2),
+  env: {
+    GIT_TERMINAL_PROMPT: process.env.GIT_TERMINAL_PROMPT ?? missing,
+    GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? missing,
+    GCM_INTERACTIVE: process.env.GCM_INTERACTIVE ?? missing,
+    HTTP_PROXY: process.env.HTTP_PROXY ?? missing,
+    HTTPS_PROXY: process.env.HTTPS_PROXY ?? missing,
+    ALL_PROXY: process.env.ALL_PROXY ?? missing,
+    NO_PROXY: process.env.NO_PROXY ?? missing,
+    GH_TOKEN: process.env.GH_TOKEN ?? missing,
+    GITHUB_TOKEN: process.env.GITHUB_TOKEN ?? missing,
+    DATABASE_URL: process.env.DATABASE_URL ?? missing
+  }
+};
+
+writeFileSync(${JSON.stringify(envCapturePath)}, JSON.stringify(payload));
+`;
+
+  await writeFile(fakeGitPath, fakeGitScript);
+  await chmod(fakeGitPath, 0o755);
+
+  const previousEnv = {
+    PATH: process.env.PATH,
+    HTTP_PROXY: process.env.HTTP_PROXY,
+    HTTPS_PROXY: process.env.HTTPS_PROXY,
+    ALL_PROXY: process.env.ALL_PROXY,
+    NO_PROXY: process.env.NO_PROXY,
+    GH_TOKEN: process.env.GH_TOKEN,
+    GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+    DATABASE_URL: process.env.DATABASE_URL
+  };
+
+  process.env.PATH = previousEnv.PATH
+    ? `${binDir}${path.delimiter}${previousEnv.PATH}`
+    : binDir;
+  process.env.HTTP_PROXY = 'http://demo-user:demo-pass@proxy.internal:8080';
+  process.env.HTTPS_PROXY = 'http://proxy.internal:8443';
+  process.env.ALL_PROXY = 'demo-user:demo-pass@proxy.internal:1080';
+  process.env.NO_PROXY = 'localhost,127.0.0.1';
+  process.env.GH_TOKEN = 'fixture-gh-token';
+  process.env.GITHUB_TOKEN = 'fixture-github-token';
+  process.env.DATABASE_URL = 'fixture-db-url';
+
+  const destinationDir = path.join(workspaceDir, 'repo-checkout');
+
+  try {
+    await cloneIntoDirectory(
+      {
+        owner: 'owner',
+        repo: 'repo',
+        cloneUrl: 'https://github.com/owner/repo.git'
+      },
+      destinationDir
+    );
+
+    const captured = JSON.parse(await readFile(envCapturePath, 'utf8')) as {
+      args: string[];
+      env: Record<string, string>;
+    };
+
+    assert.deepEqual(captured.args, [
+      'clone',
+      '--depth',
+      '1',
+      'https://github.com/owner/repo.git',
+      destinationDir
+    ]);
+    assert.equal(
+      captured.env.GIT_TERMINAL_PROMPT,
+      SAFE_GIT_ENV.GIT_TERMINAL_PROMPT
+    );
+    assert.equal(captured.env.GIT_SSH_COMMAND, SAFE_GIT_ENV.GIT_SSH_COMMAND);
+    assert.equal(captured.env.GCM_INTERACTIVE, SAFE_GIT_ENV.GCM_INTERACTIVE);
+    assert.equal(captured.env.HTTP_PROXY, '<missing>');
+    assert.equal(captured.env.HTTPS_PROXY, 'http://proxy.internal:8443');
+    assert.equal(captured.env.ALL_PROXY, '<missing>');
+    assert.equal(captured.env.NO_PROXY, 'localhost,127.0.0.1');
+    assert.equal(captured.env.GH_TOKEN, 'fixture-gh-token');
+    assert.equal(captured.env.GITHUB_TOKEN, 'fixture-github-token');
+    assert.equal(captured.env.DATABASE_URL, '<missing>');
+  } finally {
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
     }
   }
 });

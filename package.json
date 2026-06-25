@@ -11,6 +11,7 @@
     "prebuild": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "tsc -p tsconfig.json",
     "prepack": "pnpm build",
+    "prepublishOnly": "pnpm check",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:unit": "vitest run --dir test/unit",
     "test:smoke": "vitest run --dir test/smoke",

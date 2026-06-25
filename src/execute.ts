@@ -211,48 +211,16 @@ export function createRunnerEnvironment(
 
   return env;
 }
-
-export interface ExecuteInstallerDependencies {
-  resolveRunner: (
-    scriptAbsolutePath: string,
-    scriptRelativePath: string,
-    runnerOverride?: string
-  ) => Promise<SupportedRunner>;
-  isRunnerAvailable: (runner: SupportedRunner) => Promise<boolean>;
-  confirmExecution: (
-    runner: SupportedRunner,
-    scriptRelativePath: string,
-    forwardArgs: string[]
-  ) => Promise<boolean>;
-  runInstaller: (
-    runner: SupportedRunner,
-    options: ExecuteOptions
-  ) => Promise<number>;
-}
-
-const defaultDependencies: ExecuteInstallerDependencies = {
-  resolveRunner,
-  isRunnerAvailable,
-  confirmExecution,
-  runInstaller
-};
-
 export async function executeInstaller(
-  options: ExecuteOptions,
-  dependencyOverrides: Partial<ExecuteInstallerDependencies> = {}
+  options: ExecuteOptions
 ): Promise<number> {
-  const dependencies: ExecuteInstallerDependencies = {
-    ...defaultDependencies,
-    ...dependencyOverrides
-  };
-
-  const runner = await dependencies.resolveRunner(
+  const runner = await resolveRunner(
     options.script.absolutePath,
     options.script.relativePath,
     options.runnerOverride
   );
 
-  const available = await dependencies.isRunnerAvailable(runner);
+  const available = await isRunnerAvailable(runner);
   if (!available) {
     throw new Error(
       `Runner "${runner}" is not available on this host. Install it or use --runner with an available runtime.`
@@ -260,7 +228,7 @@ export async function executeInstaller(
   }
 
   if (!options.dangerouslySkipConfirmation) {
-    const confirmed = await dependencies.confirmExecution(
+    const confirmed = await confirmExecution(
       runner,
       options.script.relativePath,
       options.forwardArgs
@@ -271,5 +239,5 @@ export async function executeInstaller(
     }
   }
 
-  return await dependencies.runInstaller(runner, options);
+  return await runInstaller(runner, options);
 }

@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { afterEach, test, vi } from 'vitest';
 import {
   createGitCloneEnvironment,
   createInstallerEnvironment
-} from '../src/env.js';
+} from '../../src/env.js';
+
+afterEach(() => {
+  vi.clearAllMocks();
+});
 
 test('createInstallerEnvironment drops proxy vars with embedded credentials', () => {
   const installerEnv = createInstallerEnvironment({

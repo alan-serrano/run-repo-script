@@ -2,73 +2,65 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import test from 'node:test';
+import { EventEmitter } from 'node:events';
+import { spawn } from 'node:child_process';
+import { createInterface } from 'node:readline/promises';
+import { afterEach, expect, test, vi, type MockedFunction } from 'vitest';
+import { withInteractiveTty, withNonInteractiveTty } from '../helpers/tty.js';
 import {
   createRunnerEnvironment,
   executeInstaller,
   isConfirmationAccepted,
   isRunnerAvailable,
   resolveRunner
-} from '../src/execute.js';
+} from '../../src/execute.js';
 
-async function withTempRepo(t: test.TestContext): Promise<string> {
+vi.mock('node:child_process', async () => {
+  const actual =
+    await vi.importActual<typeof import('node:child_process')>(
+      'node:child_process'
+    );
+  return {
+    ...actual,
+    spawn: vi.fn(actual.spawn)
+  };
+});
+
+vi.mock('node:readline/promises', async () => {
+  const actual = await vi.importActual<typeof import('node:readline/promises')>(
+    'node:readline/promises'
+  );
+  return {
+    ...actual,
+    createInterface: vi.fn(actual.createInterface)
+  };
+});
+
+const spawnMock = spawn as MockedFunction<typeof spawn>;
+const createInterfaceMock = createInterface as MockedFunction<
+  typeof createInterface
+>;
+
+const tempRepos: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    tempRepos
+      .splice(0)
+      .map((repoRoot) => rm(repoRoot, { recursive: true, force: true }))
+  );
+  vi.restoreAllMocks();
+  vi.clearAllMocks();
+});
+
+async function withTempRepo(): Promise<string> {
   const repoRoot = await mkdtemp(path.join(tmpdir(), 'run-repo-execute-test-'));
-  t.after(async () => {
-    await rm(repoRoot, { recursive: true, force: true });
-  });
+  tempRepos.push(repoRoot);
   return repoRoot;
 }
 
-async function withNonInteractiveTty<T>(action: () => Promise<T>): Promise<T> {
-  const hadStdinIsTTY = Object.prototype.hasOwnProperty.call(
-    process.stdin,
-    'isTTY'
-  );
-  const hadStdoutIsTTY = Object.prototype.hasOwnProperty.call(
-    process.stdout,
-    'isTTY'
-  );
-  const previousStdinIsTTY = process.stdin.isTTY;
-  const previousStdoutIsTTY = process.stdout.isTTY;
-
-  Object.defineProperty(process.stdin, 'isTTY', {
-    value: false,
-    configurable: true,
-    writable: true
-  });
-  Object.defineProperty(process.stdout, 'isTTY', {
-    value: false,
-    configurable: true,
-    writable: true
-  });
-
-  try {
-    return await action();
-  } finally {
-    if (hadStdinIsTTY) {
-      Object.defineProperty(process.stdin, 'isTTY', {
-        value: previousStdinIsTTY,
-        configurable: true,
-        writable: true
-      });
-    } else {
-      delete (process.stdin as unknown as { isTTY?: boolean }).isTTY;
-    }
-
-    if (hadStdoutIsTTY) {
-      Object.defineProperty(process.stdout, 'isTTY', {
-        value: previousStdoutIsTTY,
-        configurable: true,
-        writable: true
-      });
-    } else {
-      delete (process.stdout as unknown as { isTTY?: boolean }).isTTY;
-    }
-  }
-}
-
-test('resolveRunner prefers --runner override', async (t) => {
-  const repoRoot = await withTempRepo(t);
+test('resolveRunner prefers --runner override', async () => {
+  const repoRoot = await withTempRepo();
   const scriptPath = path.join(repoRoot, 'install.sh');
   await writeFile(scriptPath, '#!/usr/bin/env bash\necho ok\n');
 
@@ -76,8 +68,19 @@ test('resolveRunner prefers --runner override', async (t) => {
   assert.equal(runner, 'node');
 });
 
-test('resolveRunner reads zx from shebang', async (t) => {
-  const repoRoot = await withTempRepo(t);
+test('resolveRunner rejects unsupported --runner values', async () => {
+  const repoRoot = await withTempRepo();
+  const scriptPath = path.join(repoRoot, 'install.sh');
+  await writeFile(scriptPath, '#!/usr/bin/env bash\necho ok\n');
+
+  await assert.rejects(
+    () => resolveRunner(scriptPath, 'install.sh', 'definitely-not-supported'),
+    /Unsupported --runner value/
+  );
+});
+
+test('resolveRunner reads zx from shebang', async () => {
+  const repoRoot = await withTempRepo();
   const scriptPath = path.join(repoRoot, 'install.mjs');
   await writeFile(scriptPath, '#!/usr/bin/env zx\nconsole.log("ok")\n');
 
@@ -85,8 +88,8 @@ test('resolveRunner reads zx from shebang', async (t) => {
   assert.equal(runner, 'zx');
 });
 
-test('resolveRunner falls back by extension', async (t) => {
-  const repoRoot = await withTempRepo(t);
+test('resolveRunner falls back by extension', async () => {
+  const repoRoot = await withTempRepo();
   await mkdir(path.join(repoRoot, 'scripts'), { recursive: true });
   const shellScriptPath = path.join(repoRoot, 'scripts/install.sh');
   await writeFile(shellScriptPath, 'echo ok\n');
@@ -118,8 +121,8 @@ test('isConfirmationAccepted treats empty answer as yes by default', () => {
   assert.equal(isConfirmationAccepted('n'), false);
 });
 
-test('executeInstaller bypasses prompt with dangerous skip confirmation and forwards args', async (t) => {
-  const repoRoot = await withTempRepo(t);
+test('executeInstaller bypasses prompt with dangerous skip confirmation and forwards args', async () => {
+  const repoRoot = await withTempRepo();
   const markerPath = path.join(repoRoot, 'argv.txt');
   const scriptPath = path.join(repoRoot, 'install.js');
 
@@ -143,8 +146,8 @@ test('executeInstaller bypasses prompt with dangerous skip confirmation and forw
   assert.equal(await readFile(markerPath, 'utf8'), '--target local');
 });
 
-test('executeInstaller prevents option injection for leading-dash script names', async (t) => {
-  const repoRoot = await withTempRepo(t);
+test('executeInstaller prevents option injection for leading-dash script names', async () => {
+  const repoRoot = await withTempRepo();
   const markerPath = path.join(repoRoot, 'safe-marker.txt');
   const scriptPath = path.join(repoRoot, '-c');
   const scriptContent = [
@@ -170,8 +173,8 @@ test('executeInstaller prevents option injection for leading-dash script names',
   assert.equal((await readFile(markerPath, 'utf8')).trim(), 'safe');
 });
 
-test('executeInstaller strips obvious secret variables from child environment', async (t) => {
-  const repoRoot = await withTempRepo(t);
+test('executeInstaller strips obvious secret variables from child environment', async () => {
+  const repoRoot = await withTempRepo();
   const markerPath = path.join(repoRoot, 'env-check.txt');
   const scriptPath = path.join(repoRoot, 'install.js');
   const previousSecret = process.env.RUN_REPO_TEST_SECRET_TOKEN;
@@ -208,8 +211,8 @@ writeFileSync('env-check.txt', value);
   }
 });
 
-test('executeInstaller preserves non-credential proxy and cert vars while still stripping secrets', async (t) => {
-  const repoRoot = await withTempRepo(t);
+test('executeInstaller preserves non-credential proxy and cert vars while still stripping secrets', async () => {
+  const repoRoot = await withTempRepo();
   const markerPath = path.join(repoRoot, 'env-network-check.json');
   const scriptPath = path.join(repoRoot, 'install.js');
 
@@ -332,8 +335,8 @@ writeFileSync('env-network-check.json', JSON.stringify(values));
   }
 });
 
-test('executeInstaller drops credential-bearing proxy vars while preserving NO_PROXY and cert vars', async (t) => {
-  const repoRoot = await withTempRepo(t);
+test('executeInstaller drops credential-bearing proxy vars while preserving NO_PROXY and cert vars', async () => {
+  const repoRoot = await withTempRepo();
   const markerPath = path.join(
     repoRoot,
     'env-network-credential-proxy-check.json'
@@ -437,8 +440,8 @@ writeFileSync('env-network-credential-proxy-check.json', JSON.stringify(values))
   }
 });
 
-test('executeInstaller drops bare credential-bearing proxy values in execution path', async (t) => {
-  const repoRoot = await withTempRepo(t);
+test('executeInstaller drops bare credential-bearing proxy values in execution path', async () => {
+  const repoRoot = await withTempRepo();
   const markerPath = path.join(repoRoot, 'env-bare-proxy-check.json');
   const scriptPath = path.join(repoRoot, 'install.js');
 
@@ -495,8 +498,8 @@ writeFileSync('env-bare-proxy-check.json', JSON.stringify(values));
   }
 });
 
-test('executeInstaller still strips GitHub auth tokens from child environment', async (t) => {
-  const repoRoot = await withTempRepo(t);
+test('executeInstaller still strips GitHub auth tokens from child environment', async () => {
+  const repoRoot = await withTempRepo();
   const markerPath = path.join(repoRoot, 'github-token-check.txt');
   const scriptPath = path.join(repoRoot, 'install.js');
   const previousGithubToken = process.env.GITHUB_TOKEN;
@@ -533,8 +536,8 @@ writeFileSync('github-token-check.txt', value);
   }
 });
 
-test('executeInstaller strips DATABASE_URL from child environment', async (t) => {
-  const repoRoot = await withTempRepo(t);
+test('executeInstaller strips DATABASE_URL from child environment', async () => {
+  const repoRoot = await withTempRepo();
   const markerPath = path.join(repoRoot, 'database-url-check.txt');
   const scriptPath = path.join(repoRoot, 'install.js');
   const previousDatabaseUrl = process.env.DATABASE_URL;
@@ -571,62 +574,127 @@ writeFileSync('database-url-check.txt', value);
   }
 });
 
-test('executeInstaller uses confirmation path when dangerous skip confirmation is not passed', async () => {
-  let confirmationCalled = false;
+test('executeInstaller fails fast with clear error in non-interactive confirmation path', async () => {
+  const repoRoot = await withTempRepo();
+  const scriptPath = path.join(repoRoot, 'install.js');
+  await writeFile(scriptPath, 'process.exit(0)\n');
 
-  const exitCode = await executeInstaller(
-    {
-      repoRoot: '/repo',
+  await withNonInteractiveTty(async () => {
+    await assert.rejects(
+      () =>
+        executeInstaller({
+          repoRoot,
+          script: {
+            absolutePath: scriptPath,
+            relativePath: 'install.js'
+          },
+          dangerouslySkipConfirmation: false,
+          forwardArgs: [],
+          runnerOverride: 'node'
+        }),
+      /Confirmation requires an interactive terminal\. Re-run with --dangerously-skip-confirmation/
+    );
+  });
+});
+
+test('executeInstaller uses confirmation prompt when dangerous skip is disabled', async () => {
+  const repoRoot = await withTempRepo();
+  const scriptPath = path.join(repoRoot, 'install.js');
+  await writeFile(scriptPath, 'process.exit(0)\n');
+
+  const questionMock = vi.fn().mockResolvedValue('y');
+  const closeMock = vi.fn();
+
+  createInterfaceMock.mockImplementationOnce(
+    () =>
+      ({
+        question: questionMock,
+        close: closeMock
+      }) as unknown as ReturnType<typeof createInterface>
+  );
+
+  const exitCode = await withInteractiveTty(async () => {
+    return await executeInstaller({
+      repoRoot,
       script: {
-        absolutePath: '/repo/install.js',
+        absolutePath: scriptPath,
         relativePath: 'install.js'
       },
       dangerouslySkipConfirmation: false,
       forwardArgs: ['--target', 'local'],
-      runnerOverride: undefined
-    },
-    {
-      resolveRunner: async () => 'node',
-      isRunnerAvailable: async () => true,
-      confirmExecution: async (runner, scriptRelativePath, forwardArgs) => {
-        confirmationCalled = true;
-        assert.equal(runner, 'node');
-        assert.equal(scriptRelativePath, 'install.js');
-        assert.deepEqual(forwardArgs, ['--target', 'local']);
-        return true;
-      },
-      runInstaller: async () => 0
-    }
-  );
+      runnerOverride: 'node'
+    });
+  });
 
   assert.equal(exitCode, 0);
-  assert.equal(confirmationCalled, true);
+  expect(questionMock).toHaveBeenCalledWith(
+    expect.stringContaining('About to run: node install.js --target local')
+  );
+  expect(closeMock).toHaveBeenCalledTimes(1);
 });
 
-test('executeInstaller fails fast with clear error in non-interactive confirmation path', async () => {
-  await withNonInteractiveTty(async () => {
+test('executeInstaller fails deterministically when runner is unavailable', async () => {
+  const repoRoot = await withTempRepo();
+  const scriptPath = path.join(repoRoot, 'install.js');
+  await writeFile(scriptPath, 'process.exit(0)\n');
+
+  spawnMock.mockImplementationOnce((() => {
+    const child = new EventEmitter();
+    queueMicrotask(() => child.emit('close', 1));
+    return child as unknown as ReturnType<typeof spawn>;
+  }) as typeof spawn);
+
+  await assert.rejects(
+    () =>
+      executeInstaller({
+        repoRoot,
+        script: {
+          absolutePath: scriptPath,
+          relativePath: 'install.js'
+        },
+        dangerouslySkipConfirmation: true,
+        forwardArgs: [],
+        runnerOverride: 'node'
+      }),
+    /Runner "node" is not available/
+  );
+
+  expect(spawnMock).toHaveBeenCalledWith('node', ['--version'], {
+    stdio: 'ignore'
+  });
+});
+
+test('executeInstaller rejects when user declines confirmation', async () => {
+  const repoRoot = await withTempRepo();
+  const scriptPath = path.join(repoRoot, 'install.js');
+  await writeFile(scriptPath, 'process.exit(0)\n');
+
+  createInterfaceMock.mockImplementationOnce(
+    () =>
+      ({
+        question: vi.fn().mockResolvedValue('n'),
+        close: vi.fn()
+      }) as unknown as ReturnType<typeof createInterface>
+  );
+
+  await withInteractiveTty(async () => {
     await assert.rejects(
       () =>
-        executeInstaller(
-          {
-            repoRoot: '/repo',
-            script: {
-              absolutePath: '/repo/install.js',
-              relativePath: 'install.js'
-            },
-            dangerouslySkipConfirmation: false,
-            forwardArgs: [],
-            runnerOverride: undefined
+        executeInstaller({
+          repoRoot,
+          script: {
+            absolutePath: scriptPath,
+            relativePath: 'install.js'
           },
-          {
-            resolveRunner: async () => 'node',
-            isRunnerAvailable: async () => true,
-            runInstaller: async () => 0
-          }
-        ),
-      /Confirmation requires an interactive terminal\. Re-run with --dangerously-skip-confirmation/
+          dangerouslySkipConfirmation: false,
+          forwardArgs: [],
+          runnerOverride: 'node'
+        }),
+      /Execution cancelled by user/
     );
   });
+
+  expect(spawnMock).toHaveBeenCalledTimes(1);
 });
 
 test('createRunnerEnvironment enables documented zx verbosity via ZX_VERBOSE=true', () => {
@@ -637,82 +705,21 @@ test('createRunnerEnvironment enables documented zx verbosity via ZX_VERBOSE=tru
   assert.equal(zxEnv.ZX_VERBOSE, 'true');
 });
 
-test('executeInstaller fails deterministically when runner is unavailable', async () => {
-  await assert.rejects(
-    () =>
-      executeInstaller(
-        {
-          repoRoot: '/repo',
-          script: {
-            absolutePath: '/repo/install.mjs',
-            relativePath: 'install.mjs'
-          },
-          dangerouslySkipConfirmation: true,
-          forwardArgs: [],
-          runnerOverride: undefined
-        },
-        {
-          resolveRunner: async () => 'zx',
-          isRunnerAvailable: async () => false,
-          confirmExecution: async () => true,
-          runInstaller: async () => 0
-        }
-      ),
-    /Runner "zx" is not available/
-  );
-});
-
-test('executeInstaller rejects when user declines confirmation', async () => {
-  let installerCalled = false;
-
-  await assert.rejects(
-    () =>
-      executeInstaller(
-        {
-          repoRoot: '/repo',
-          script: {
-            absolutePath: '/repo/install.js',
-            relativePath: 'install.js'
-          },
-          dangerouslySkipConfirmation: false,
-          forwardArgs: [],
-          runnerOverride: undefined
-        },
-        {
-          resolveRunner: async () => 'node',
-          isRunnerAvailable: async () => true,
-          confirmExecution: async () => false,
-          runInstaller: async () => {
-            installerCalled = true;
-            return 0;
-          }
-        }
-      ),
-    /Execution cancelled by user/
-  );
-
-  assert.equal(installerCalled, false);
-});
-
 test('executeInstaller returns non-zero child exit codes', async () => {
-  const exitCode = await executeInstaller(
-    {
-      repoRoot: '/repo',
-      script: {
-        absolutePath: '/repo/install.js',
-        relativePath: 'install.js'
-      },
-      dangerouslySkipConfirmation: true,
-      forwardArgs: [],
-      runnerOverride: undefined
+  const repoRoot = await withTempRepo();
+  const scriptPath = path.join(repoRoot, 'install.js');
+  await writeFile(scriptPath, 'process.exit(37)\n');
+
+  const exitCode = await executeInstaller({
+    repoRoot,
+    script: {
+      absolutePath: scriptPath,
+      relativePath: 'install.js'
     },
-    {
-      resolveRunner: async () => 'node',
-      isRunnerAvailable: async () => true,
-      confirmExecution: async () => true,
-      runInstaller: async () => 37
-    }
-  );
+    dangerouslySkipConfirmation: true,
+    forwardArgs: [],
+    runnerOverride: 'node'
+  });
 
   assert.equal(exitCode, 37);
 });

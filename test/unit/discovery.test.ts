@@ -9,21 +9,30 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import test from 'node:test';
-import { resolveInstaller } from '../src/discovery.js';
+import { afterEach, test, vi } from 'vitest';
+import { resolveInstaller } from '../../src/discovery.js';
 
-async function withTempRepo(t: test.TestContext): Promise<string> {
+const tempRepos: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    tempRepos
+      .splice(0)
+      .map((repoRoot) => rm(repoRoot, { recursive: true, force: true }))
+  );
+  vi.clearAllMocks();
+});
+
+async function withTempRepo(): Promise<string> {
   const repoRoot = await mkdtemp(
     path.join(tmpdir(), 'run-repo-discovery-test-')
   );
-  t.after(async () => {
-    await rm(repoRoot, { recursive: true, force: true });
-  });
+  tempRepos.push(repoRoot);
   return repoRoot;
 }
 
-test('resolveInstaller finds the only default installer', async (t) => {
-  const repoRoot = await withTempRepo(t);
+test('resolveInstaller finds the only default installer', async () => {
+  const repoRoot = await withTempRepo();
   await mkdir(path.join(repoRoot, 'scripts'), { recursive: true });
   await writeFile(
     path.join(repoRoot, 'scripts/install.sh'),
@@ -39,8 +48,8 @@ test('resolveInstaller finds the only default installer', async (t) => {
   );
 });
 
-test('resolveInstaller fails when no installer is found', async (t) => {
-  const repoRoot = await withTempRepo(t);
+test('resolveInstaller fails when no installer is found', async () => {
+  const repoRoot = await withTempRepo();
 
   await assert.rejects(
     () => resolveInstaller(repoRoot),
@@ -48,8 +57,8 @@ test('resolveInstaller fails when no installer is found', async (t) => {
   );
 });
 
-test('resolveInstaller fails when multiple defaults are found', async (t) => {
-  const repoRoot = await withTempRepo(t);
+test('resolveInstaller fails when multiple defaults are found', async () => {
+  const repoRoot = await withTempRepo();
   await mkdir(path.join(repoRoot, 'scripts'), { recursive: true });
   await writeFile(
     path.join(repoRoot, 'install.js'),
@@ -66,8 +75,8 @@ test('resolveInstaller fails when multiple defaults are found', async (t) => {
   );
 });
 
-test('resolveInstaller resolves explicit script path', async (t) => {
-  const repoRoot = await withTempRepo(t);
+test('resolveInstaller resolves explicit script path', async () => {
+  const repoRoot = await withTempRepo();
   await mkdir(path.join(repoRoot, 'scripts'), { recursive: true });
   await writeFile(
     path.join(repoRoot, 'scripts/install.js'),
@@ -79,8 +88,8 @@ test('resolveInstaller resolves explicit script path', async (t) => {
   assert.equal(result.relativePath, 'scripts/install.js');
 });
 
-test('resolveInstaller rejects explicit script traversal', async (t) => {
-  const repoRoot = await withTempRepo(t);
+test('resolveInstaller rejects explicit script traversal', async () => {
+  const repoRoot = await withTempRepo();
 
   await assert.rejects(
     () => resolveInstaller(repoRoot, '../outside.sh'),
@@ -88,15 +97,13 @@ test('resolveInstaller rejects explicit script traversal', async (t) => {
   );
 });
 
-test('resolveInstaller rejects explicit script that resolves outside repo via symlink', async (t) => {
-  const repoRoot = await withTempRepo(t);
+test('resolveInstaller rejects explicit script that resolves outside repo via symlink', async () => {
+  const repoRoot = await withTempRepo();
   const outsideRoot = await mkdtemp(
     path.join(tmpdir(), 'run-repo-outside-test-')
   );
 
-  t.after(async () => {
-    await rm(outsideRoot, { recursive: true, force: true });
-  });
+  tempRepos.push(outsideRoot);
 
   await mkdir(path.join(repoRoot, 'scripts'), { recursive: true });
 
@@ -110,15 +117,13 @@ test('resolveInstaller rejects explicit script that resolves outside repo via sy
   );
 });
 
-test('resolveInstaller ignores default scripts that resolve outside repo via symlink', async (t) => {
-  const repoRoot = await withTempRepo(t);
+test('resolveInstaller ignores default scripts that resolve outside repo via symlink', async () => {
+  const repoRoot = await withTempRepo();
   const outsideRoot = await mkdtemp(
     path.join(tmpdir(), 'run-repo-outside-test-')
   );
 
-  t.after(async () => {
-    await rm(outsideRoot, { recursive: true, force: true });
-  });
+  tempRepos.push(outsideRoot);
 
   await mkdir(path.join(repoRoot, 'scripts'), { recursive: true });
 

@@ -49,45 +49,12 @@ function printUsage(): void {
     'Usage: run-repo <owner/repo[#ref]|https://github.com/owner/repo[.git][#ref]> [--script <path>] [--runner <node|bash|zx>] [--dangerously-skip-confirmation] [-- <args...>]'
   );
 }
-
-export interface CliDependencies {
-  fetchRepository: typeof fetchRepository;
-  resolveInstaller: typeof resolveInstaller;
-  executeInstaller: typeof executeInstaller;
-  cleanupWorkspace: (workspaceDir: string) => Promise<void>;
-  stderr: Pick<NodeJS.WriteStream, 'write'>;
-}
-
-const defaultDependencies: CliDependencies = {
-  fetchRepository,
-  resolveInstaller,
-  executeInstaller,
-  cleanupWorkspace: async (workspaceDir: string) => {
-    await rm(workspaceDir, { recursive: true, force: true });
-  },
-  stderr: process.stderr
-};
-
-function mergeDependencies(
-  overrides: Partial<CliDependencies>
-): CliDependencies {
-  return {
-    ...defaultDependencies,
-    ...overrides
-  };
-}
-
-export async function runCli(
-  argv: string[],
-  dependencyOverrides: Partial<CliDependencies> = {}
-): Promise<number> {
-  const dependencies = mergeDependencies(dependencyOverrides);
-
+export async function runCli(argv: string[]): Promise<number> {
   let config: RunConfig;
   try {
     config = parseRunConfig(argv);
   } catch (error) {
-    dependencies.stderr.write(
+    process.stderr.write(
       `${error instanceof Error ? error.message : String(error)}\n`
     );
     printUsage();
@@ -100,7 +67,7 @@ export async function runCli(
   }
 
   if (!config.repoTarget) {
-    dependencies.stderr.write('Repository target is required.\n');
+    process.stderr.write('Repository target is required.\n');
     printUsage();
     return 1;
   }
@@ -108,15 +75,15 @@ export async function runCli(
   let workspaceDir: string | undefined;
 
   try {
-    const fetchedRepo = await dependencies.fetchRepository(config.repoTarget);
+    const fetchedRepo = await fetchRepository(config.repoTarget);
     workspaceDir = fetchedRepo.workspaceDir;
 
-    const script = await dependencies.resolveInstaller(
+    const script = await resolveInstaller(
       fetchedRepo.workspaceDir,
       config.script
     );
 
-    return await dependencies.executeInstaller({
+    return await executeInstaller({
       repoRoot: fetchedRepo.workspaceDir,
       script,
       runnerOverride: config.runner,
@@ -124,13 +91,13 @@ export async function runCli(
       forwardArgs: config.forwardArgs
     });
   } catch (error) {
-    dependencies.stderr.write(
+    process.stderr.write(
       `${error instanceof Error ? error.message : String(error)}\n`
     );
     return 1;
   } finally {
     if (workspaceDir) {
-      await dependencies.cleanupWorkspace(workspaceDir);
+      await rm(workspaceDir, { recursive: true, force: true });
     }
   }
 }

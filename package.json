@@ -9,9 +9,12 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepack": "pnpm run build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check:no-only": "node scripts/check-no-only.mjs",
-    "test": "pnpm run check:no-only && pnpm run build && node --test dist/test/*.test.js",
+    "test:unit": "pnpm run check:no-only && vitest run --dir test/unit",
+    "test:smoke": "pnpm run check:no-only && vitest run --dir test/smoke",
+    "test": "pnpm run check:no-only && pnpm run test:unit && pnpm run test:smoke",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
@@ -39,6 +42,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.1.2",
     "prettier": "^3.5.3",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.9"
   }
 }

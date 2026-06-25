@@ -9,13 +9,24 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import test from 'node:test';
+import { afterEach, test, vi } from 'vitest';
 import {
   cloneIntoDirectory,
   createGitCloneCommand,
   resolveGitHubTarget,
   SAFE_GIT_ENV
-} from '../src/fetch.js';
+} from '../../src/fetch.js';
+
+const tempDirs: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    tempDirs
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true }))
+  );
+  vi.clearAllMocks();
+});
 
 test('resolveGitHubTarget accepts shorthand with ref', () => {
   const resolved = resolveGitHubTarget('owner/repo#v1.2.3');
@@ -234,13 +245,11 @@ test('createGitCloneCommand drops bare credential-bearing proxy values while pre
   }
 });
 
-test('cloneIntoDirectory forwards only safe clone env values to the spawned clone process', async (t) => {
+test('cloneIntoDirectory forwards only safe clone env values to the spawned clone process', async () => {
   const workspaceDir = await mkdtemp(
     path.join(tmpdir(), 'run-repo-fetch-clone-boundary-')
   );
-  t.after(async () => {
-    await rm(workspaceDir, { recursive: true, force: true });
-  });
+  tempDirs.push(workspaceDir);
 
   const binDir = path.join(workspaceDir, 'bin');
   await mkdir(binDir, { recursive: true });

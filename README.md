@@ -6,7 +6,8 @@
 
 - Node.js 20+
 - `git` installed and authenticated for the target GitHub repository
-- Runtime for the selected script (`node`, `bash`, or `zx`)
+- Runtime for the selected script (`node` or `bash`)
+- `zx` is bundled and used only for explicit zx intent (`--runner zx` or zx shebang)
 
 ## Usage
 

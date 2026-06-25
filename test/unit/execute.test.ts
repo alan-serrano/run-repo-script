@@ -105,12 +105,51 @@ test('resolveRunner falls back by extension', async () => {
 
   const nodeRunner = await resolveRunner(nodeScriptPath, 'install.js');
   assert.equal(nodeRunner, 'node');
+
+  const moduleScriptPath = path.join(repoRoot, 'install.mjs');
+  await writeFile(moduleScriptPath, 'console.log("ok")\n');
+
+  const moduleRunner = await resolveRunner(moduleScriptPath, 'install.mjs');
+  assert.equal(moduleRunner, 'node');
 });
 
 test('isRunnerAvailable detects known and unknown runtimes', async () => {
   assert.equal(await isRunnerAvailable('node'), true);
-  const zxAvailable = await isRunnerAvailable('zx');
-  assert.equal(typeof zxAvailable, 'boolean');
+  assert.equal(await isRunnerAvailable('zx'), true);
+});
+
+test('executeInstaller uses bundled zx runtime when --runner zx is selected', async () => {
+  const repoRoot = await withTempRepo();
+  const markerPath = path.join(repoRoot, 'zx-marker.txt');
+  const scriptPath = path.join(repoRoot, 'install.mjs');
+
+  await writeFile(
+    scriptPath,
+    `import { writeFileSync } from 'node:fs';\nwriteFileSync('zx-marker.txt', 'ok');\n`
+  );
+
+  const exitCode = await executeInstaller({
+    repoRoot,
+    script: {
+      absolutePath: scriptPath,
+      relativePath: 'install.mjs'
+    },
+    dangerouslySkipConfirmation: true,
+    forwardArgs: [],
+    runnerOverride: 'zx'
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(await readFile(markerPath, 'utf8'), 'ok');
+
+  const runCall = spawnMock.mock.calls.find(
+    (call) => call[1][call[1].length - 1] === './install.mjs'
+  );
+
+  expect(runCall).toBeDefined();
+  assert.equal(runCall?.[0], process.execPath);
+  assert.equal(typeof runCall?.[1][0], 'string');
+  assert.match(runCall?.[1][0] ?? '', /[\\/]zx[\\/].*cli\.js$/);
 });
 
 test('isConfirmationAccepted treats empty answer as yes by default', () => {

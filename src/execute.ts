@@ -1,9 +1,13 @@
 import { spawn } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { createInstallerEnvironment } from './env.js';
 import type { ExecuteOptions, SupportedRunner } from './types.js';
+
+const require = createRequire(import.meta.url);
 
 const SUPPORTED_RUNNERS: Record<SupportedRunner, true> = {
   node: true,
@@ -78,6 +82,60 @@ function fallbackRunner(
   return undefined;
 }
 
+function resolveBundledZxCliPath(): string | undefined {
+  try {
+    const packageJsonPath = require.resolve('zx/package.json');
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      bin?: string | { zx?: string };
+    };
+    const binPath =
+      typeof packageJson.bin === 'string'
+        ? packageJson.bin
+        : packageJson.bin?.zx;
+
+    if (!binPath) {
+      return undefined;
+    }
+
+    const cliPath = path.join(path.dirname(packageJsonPath), binPath);
+    return existsSync(cliPath) ? cliPath : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveRunnerCommand(runner: SupportedRunner): {
+  command: string;
+  preArgs: string[];
+} {
+  if (runner !== 'zx') {
+    return {
+      command: runner,
+      preArgs: []
+    };
+  }
+
+  const bundledZxCliPath = resolveBundledZxCliPath();
+  if (!bundledZxCliPath) {
+    throw new Error(
+      'Bundled zx runtime is not available in this installation. Reinstall run-repo-script.'
+    );
+  }
+
+  return {
+    command: process.execPath,
+    preArgs: [bundledZxCliPath]
+  };
+}
+
+function unavailableRunnerMessage(runner: SupportedRunner): string {
+  if (runner === 'zx') {
+    return 'Bundled zx runtime is not available in this installation. Reinstall run-repo-script.';
+  }
+
+  return `Runner "${runner}" is not available on this host. Install it or use --runner with an available runtime.`;
+}
+
 export async function resolveRunner(
   scriptAbsolutePath: string,
   scriptRelativePath: string,
@@ -114,6 +172,10 @@ export async function resolveRunner(
 export async function isRunnerAvailable(
   runner: SupportedRunner
 ): Promise<boolean> {
+  if (runner === 'zx') {
+    return resolveBundledZxCliPath() !== undefined;
+  }
+
   return await new Promise<boolean>((resolve) => {
     const child = spawn(runner, ['--version'], { stdio: 'ignore' });
 
@@ -173,13 +235,15 @@ async function runInstaller(
   runner: SupportedRunner,
   options: ExecuteOptions
 ): Promise<number> {
+  const runnerCommand = resolveRunnerCommand(runner);
   const args = [
+    ...runnerCommand.preArgs,
     toRunnerScriptPath(options.script.relativePath),
     ...options.forwardArgs
   ];
 
   return await new Promise<number>((resolve, reject) => {
-    const child = spawn(runner, args, {
+    const child = spawn(runnerCommand.command, args, {
       cwd: options.repoRoot,
       stdio: 'inherit',
       env: createRunnerEnvironment(runner)
@@ -222,9 +286,7 @@ export async function executeInstaller(
 
   const available = await isRunnerAvailable(runner);
   if (!available) {
-    throw new Error(
-      `Runner "${runner}" is not available on this host. Install it or use --runner with an available runtime.`
-    );
+    throw new Error(unavailableRunnerMessage(runner));
   }
 
   if (!options.dangerouslySkipConfirmation) {

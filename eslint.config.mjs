@@ -1,6 +1,7 @@
 import js from '@eslint/js';
 import tsParser from '@typescript-eslint/parser';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
+import vitestPlugin from '@vitest/eslint-plugin';
 import globals from 'globals';
 import eslintConfigPrettier from 'eslint-config-prettier';
 
@@ -37,6 +38,15 @@ export default [
     rules: {
       'no-undef': 'off',
       ...tsPlugin.configs.recommended.rules
+    }
+  },
+  {
+    files: ['test/**/*.{test,spec}.{js,mjs,cjs,ts}'],
+    plugins: {
+      vitest: vitestPlugin
+    },
+    rules: {
+      'vitest/no-focused-tests': 'error'
     }
   },
   eslintConfigPrettier

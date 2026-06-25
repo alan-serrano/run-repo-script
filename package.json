@@ -8,14 +8,18 @@
     "run-repo": "dist/src/cli.js"
   },
   "scripts": {
+    "prebuild": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "tsc -p tsconfig.json",
+    "prepack": "pnpm build",
+    "prepublishOnly": "pnpm check",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "pnpm run build && node --test dist/test/*.test.js",
+    "test:unit": "vitest run --dir test/unit",
+    "test:smoke": "vitest run --dir test/smoke",
+    "test": "pnpm test:unit && pnpm test:smoke",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
-    "lint:staged": "lint-staged --config lint-staged.config.mjs",
-    "check": "pnpm run format && pnpm run lint && pnpm run typecheck && pnpm run test",
+    "check": "pnpm format && pnpm lint && pnpm typecheck && pnpm build && pnpm test",
     "prepare": "husky"
   },
   "keywords": [
@@ -28,16 +32,21 @@
     "node": ">=20"
   },
   "devDependencies": {
-    "@eslint/js": "^9.29.0",
+    "@eslint/js": "^9.39.4",
     "@types/node": "^26.0.1",
-    "@typescript-eslint/eslint-plugin": "^8.35.1",
-    "@typescript-eslint/parser": "^8.35.1",
-    "eslint": "^9.29.0",
-    "eslint-config-prettier": "^10.1.5",
-    "globals": "^16.2.0",
+    "@typescript-eslint/eslint-plugin": "^8.62.0",
+    "@typescript-eslint/parser": "^8.62.0",
+    "@vitest/eslint-plugin": "^1.6.20",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^16.5.0",
     "husky": "^9.1.7",
-    "lint-staged": "^16.1.2",
-    "prettier": "^3.5.3",
-    "typescript": "^5.8.3"
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.8.4",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
+  },
+  "dependencies": {
+    "zx": "^8.8.5"
   }
 }

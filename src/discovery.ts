@@ -1,4 +1,4 @@
-import { stat } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { DiscoveryResult } from './types.js';
 
@@ -38,22 +38,66 @@ async function fileExists(absolutePath: string): Promise<boolean> {
   }
 }
 
+function isPathInsideRoot(rootPath: string, candidatePath: string): boolean {
+  const relativePath = path.relative(rootPath, candidatePath);
+
+  return (
+    relativePath === '' ||
+    (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))
+  );
+}
+
+async function resolveContainedFilePath(
+  repoRootRealPath: string,
+  absolutePath: string,
+  rejectOutsideRoot: boolean
+): Promise<string | undefined> {
+  let resolvedPath: string;
+  try {
+    resolvedPath = await realpath(absolutePath);
+  } catch {
+    return undefined;
+  }
+
+  if (!isPathInsideRoot(repoRootRealPath, resolvedPath)) {
+    if (rejectOutsideRoot) {
+      throw new Error(
+        'Explicit --script must resolve to a file inside the fetched repository.'
+      );
+    }
+
+    return undefined;
+  }
+
+  if (!(await fileExists(resolvedPath))) {
+    return undefined;
+  }
+
+  return resolvedPath;
+}
+
 export async function resolveInstaller(
   repoRoot: string,
   explicitScript?: string
 ): Promise<DiscoveryResult> {
+  const repoRootRealPath = await realpath(repoRoot);
   const searchedPaths = [...DEFAULT_INSTALLER_PATHS];
 
   if (explicitScript) {
     const relativePath = normalizeRelativeScriptPath(explicitScript);
     const absolutePath = path.join(repoRoot, relativePath);
+    const resolvedPath = await resolveContainedFilePath(
+      repoRootRealPath,
+      absolutePath,
+      true
+    );
 
-    if (!(await fileExists(absolutePath))) {
+    if (!resolvedPath) {
       throw new Error(`Explicit script not found: ${relativePath}`);
     }
 
     return {
-      absolutePath,
+      absolutePath: resolvedPath,
       relativePath
     };
   }
@@ -62,8 +106,14 @@ export async function resolveInstaller(
 
   for (const relativePath of searchedPaths) {
     const absolutePath = path.join(repoRoot, relativePath);
-    if (await fileExists(absolutePath)) {
-      foundDefaults.push({ absolutePath, relativePath });
+    const resolvedPath = await resolveContainedFilePath(
+      repoRootRealPath,
+      absolutePath,
+      false
+    );
+
+    if (resolvedPath) {
+      foundDefaults.push({ absolutePath: resolvedPath, relativePath });
     }
   }
 

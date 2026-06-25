@@ -2,7 +2,8 @@ export interface RunConfig {
   repoTarget: string;
   script?: string;
   runner?: string;
-  yes: boolean;
+  dangerouslySkipConfirmation: boolean;
+  help: boolean;
   forwardArgs: string[];
 }
 
@@ -21,4 +22,14 @@ export interface ResolvedRepoTarget {
 export interface FetchResult {
   workspaceDir: string;
   resolvedTarget: ResolvedRepoTarget;
+}
+
+export type SupportedRunner = 'node' | 'bash' | 'zx';
+
+export interface ExecuteOptions {
+  repoRoot: string;
+  script: DiscoveryResult;
+  runnerOverride?: string;
+  dangerouslySkipConfirmation: boolean;
+  forwardArgs: string[];
 }

@@ -1,0 +1,43 @@
+{
+  "name": "run-repo-script",
+  "version": "0.1.0",
+  "description": "Fetch a GitHub repository and run its installer script",
+  "type": "module",
+  "packageManager": "pnpm@10.13.1",
+  "bin": {
+    "run-repo": "dist/src/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "pnpm run build && node --test dist/test/*.test.js",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "lint:staged": "lint-staged --config lint-staged.config.mjs",
+    "check": "pnpm run format && pnpm run lint && pnpm run typecheck && pnpm run test",
+    "prepare": "husky"
+  },
+  "keywords": [
+    "cli",
+    "installer",
+    "github"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.29.0",
+    "@types/node": "^26.0.1",
+    "@typescript-eslint/eslint-plugin": "^8.35.1",
+    "@typescript-eslint/parser": "^8.35.1",
+    "eslint": "^9.29.0",
+    "eslint-config-prettier": "^10.1.5",
+    "globals": "^16.2.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.2",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3"
+  }
+}

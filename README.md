@@ -17,6 +17,26 @@ run-repo owner/repo#v1.2.3
 run-repo https://github.com/owner/repo.git#main
 ```
 
+## npm and npx
+
+Install globally:
+
+```bash
+npm install -g run-repo-script
+```
+
+Run directly with npx:
+
+```bash
+npx run-repo-script owner/repo
+```
+
+Pre-release gate for first public publish:
+
+- Preferred package identity is `run-repo-script` on npmjs.
+- Confirm the unscoped name is available before the first live publish.
+- If unavailable, switch to an approved scoped fallback (for example, `@<scope>/run-repo-script`) before publishing.
+
 ## Example
 
 Run an explicit installer script and forward flags to it:

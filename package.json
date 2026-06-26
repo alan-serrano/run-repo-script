@@ -4,14 +4,19 @@
   "description": "Fetch a GitHub repository and run its installer script",
   "type": "module",
   "packageManager": "pnpm@10.13.1",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "bin": {
-    "run-repo": "dist/src/cli.js"
+    "run-repo": "dist/cli.js"
   },
   "scripts": {
     "prebuild": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "prepack": "pnpm build",
     "prepublishOnly": "pnpm check",
+    "pack:check": "node scripts/validate-pack.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:unit": "vitest run --dir test/unit",
     "test:smoke": "vitest run --dir test/smoke",
@@ -19,7 +24,7 @@
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
-    "check": "pnpm format && pnpm lint && pnpm typecheck && pnpm build && pnpm test",
+    "check": "pnpm format && pnpm lint && pnpm typecheck && pnpm build && pnpm pack:check && pnpm test",
     "prepare": "husky"
   },
   "keywords": [

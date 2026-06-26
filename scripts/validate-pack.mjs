@@ -1,7 +1,10 @@
 import { spawnSync } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 
 const forbiddenPrefixes = ['src/', 'test/', '.atl/', '.husky/', 'dist/test/'];
-const requiredPaths = ['dist/cli.js'];
+const requiredCliPath = 'dist/cli.js';
+const requiredPaths = [requiredCliPath];
+const requiredCliShebang = '#!/usr/bin/env node';
 
 const result = spawnSync(
   'npm',
@@ -70,6 +73,24 @@ const missingRequired = requiredPaths.filter(
 if (missingRequired.length > 0) {
   process.stderr.write(
     `Missing required paths in package: ${missingRequired.join(', ')}\n`
+  );
+  process.exit(1);
+}
+
+let cliContent;
+
+try {
+  cliContent = await readFile(requiredCliPath, 'utf8');
+} catch {
+  process.stderr.write(`Unable to read required CLI bin: ${requiredCliPath}\n`);
+  process.exit(1);
+}
+
+const firstLine = cliContent.split('\n', 1)[0]?.replace(/\r$/, '');
+
+if (firstLine !== requiredCliShebang) {
+  process.stderr.write(
+    `CLI bin is missing required shebang (${requiredCliShebang}): ${requiredCliPath}\n`
   );
   process.exit(1);
 }

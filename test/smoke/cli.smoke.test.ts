@@ -77,6 +77,62 @@ test('smoke: built CLI --help exits successfully', () => {
   expect(result.stdout).toContain('Usage: run-repo');
 });
 
+test('smoke: installed npm bin executes direct --help path', async () => {
+  await withTempWorkspace(async (workspaceDir) => {
+    const packResult = spawnSync(
+      'npm',
+      ['pack', '--json', '--ignore-scripts'],
+      {
+        cwd: repoRoot,
+        encoding: 'utf8'
+      }
+    );
+
+    expect(packResult.status).toBe(0);
+
+    const packOutput = packResult.stdout.trim();
+    const jsonStart = packOutput.indexOf('[');
+    const jsonEnd = packOutput.lastIndexOf(']');
+
+    expect(jsonStart).toBeGreaterThanOrEqual(0);
+    expect(jsonEnd).toBeGreaterThanOrEqual(jsonStart);
+
+    const parsed = JSON.parse(
+      packOutput.slice(jsonStart, jsonEnd + 1)
+    ) as Array<{
+      filename?: string;
+    }>;
+
+    expect(parsed[0]?.filename).toBeTruthy();
+
+    const tarballPath = path.join(repoRoot, parsed[0].filename as string);
+
+    const initResult = spawnSync('npm', ['init', '-y'], {
+      cwd: workspaceDir,
+      encoding: 'utf8'
+    });
+
+    expect(initResult.status).toBe(0);
+
+    const installResult = spawnSync('npm', ['install', tarballPath], {
+      cwd: workspaceDir,
+      encoding: 'utf8'
+    });
+
+    expect(installResult.status).toBe(0);
+
+    const binPath = path.join(workspaceDir, 'node_modules', '.bin', 'run-repo');
+
+    const result = spawnSync(binPath, ['--help'], {
+      cwd: workspaceDir,
+      encoding: 'utf8'
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Usage: run-repo');
+  });
+});
+
 test('contract: built CLI without target exits with deterministic guidance', () => {
   const result = runBuiltCli([]);
 

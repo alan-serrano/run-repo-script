@@ -1,4 +1,7 @@
+#!/usr/bin/env node
+
 import { parseArgs } from 'node:util';
+import { realpathSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { resolveInstaller } from './discovery.js';
@@ -103,10 +106,17 @@ export async function runCli(argv: string[]): Promise<number> {
 }
 
 function isDirectExecution(): boolean {
-  return (
-    Boolean(process.argv[1]) &&
-    import.meta.url === pathToFileURL(process.argv[1]).href
-  );
+  const entrypoint = process.argv[1];
+
+  if (!entrypoint) {
+    return false;
+  }
+
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(entrypoint)).href;
+  } catch {
+    return import.meta.url === pathToFileURL(entrypoint).href;
+  }
 }
 
 if (isDirectExecution()) {

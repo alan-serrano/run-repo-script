@@ -1,6 +1,9 @@
-# run-repo-script
+# run-repo
 
 `run-repo` fetches a GitHub repository and runs its installer script with a small, auditable CLI flow.
+
+Package name: `run-repo-script`  
+CLI command: `run-repo`
 
 ## Requirements
 
@@ -17,7 +20,7 @@ run-repo owner/repo#v1.2.3
 run-repo https://github.com/owner/repo.git#main
 ```
 
-## npm and npx
+## Install and run
 
 Install globally:
 
@@ -30,12 +33,6 @@ Run directly with npx:
 ```bash
 npx run-repo-script owner/repo
 ```
-
-Pre-release gate for first public publish:
-
-- Preferred package identity is `run-repo-script` on npmjs.
-- Confirm the unscoped name is available before the first live publish.
-- If unavailable, switch to an approved scoped fallback (for example, `@<scope>/run-repo-script`) before publishing.
 
 ## Example
 

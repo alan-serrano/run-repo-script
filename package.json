@@ -1,6 +1,6 @@
 {
   "name": "run-repo-script",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Fetch a GitHub repository and run its installer script",
   "type": "module",
   "packageManager": "pnpm@10.13.1",

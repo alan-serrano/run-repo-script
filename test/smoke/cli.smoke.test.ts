@@ -7,15 +7,11 @@ import { beforeAll, expect, test } from 'vitest';
 
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
 const cliEntrypoint = fileURLToPath(
-  new URL('../../dist/src/cli.js', import.meta.url)
+  new URL('../../dist/cli.js', import.meta.url)
 );
 const executeEntrypoint = fileURLToPath(
-  new URL('../../dist/src/execute.js', import.meta.url)
+  new URL('../../dist/execute.js', import.meta.url)
 );
-const tscEntrypoint = fileURLToPath(
-  new URL('../../node_modules/typescript/bin/tsc', import.meta.url)
-);
-
 function runBuiltCli(args: string[]) {
   return spawnSync(process.execPath, [cliEntrypoint, ...args], {
     cwd: repoRoot,
@@ -66,14 +62,10 @@ async function importBuiltExecuteInstaller(): Promise<
 }
 
 beforeAll(() => {
-  const buildResult = spawnSync(
-    process.execPath,
-    [tscEntrypoint, '-p', 'tsconfig.json'],
-    {
-      cwd: repoRoot,
-      encoding: 'utf8'
-    }
-  );
+  const buildResult = spawnSync('pnpm', ['build'], {
+    cwd: repoRoot,
+    encoding: 'utf8'
+  });
 
   expect(buildResult.status).toBe(0);
 });

@@ -1,6 +1,9 @@
-# run-repo-script
+# run-repo
 
 `run-repo` fetches a GitHub repository and runs its installer script with a small, auditable CLI flow.
+
+Package name: `run-repo-script`  
+CLI command: `run-repo`
 
 ## Requirements
 
@@ -15,6 +18,20 @@
 run-repo owner/repo
 run-repo owner/repo#v1.2.3
 run-repo https://github.com/owner/repo.git#main
+```
+
+## Install and run
+
+Install globally:
+
+```bash
+npm install -g run-repo-script
+```
+
+Run directly with npx:
+
+```bash
+npx run-repo-script owner/repo
 ```
 
 ## Example

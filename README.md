@@ -22,16 +22,22 @@ run-repo https://github.com/owner/repo.git#main
 
 ## Install and run
 
-Install globally:
+`run-repo-script` is the npm package name.
+`run-repo` is the CLI command installed from that package.
+
+Install globally, then use the command:
 
 ```bash
 npm install -g run-repo-script
+run-repo owner/repo
+run-repo owner/repo#v1.2.3
 ```
 
-Run directly with npx:
+Run directly with npx (no global install). With npx, use the package name:
 
 ```bash
 npx run-repo-script owner/repo
+npx run-repo-script owner/repo#v1.2.3
 ```
 
 ## Example

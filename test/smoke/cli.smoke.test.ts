@@ -200,7 +200,7 @@ test('smoke: built CLI fetch mode fails deterministically for an unknown repo', 
   const result = runBuiltCli(['this-org-does-not-exist-xyz123/no-such-repo']);
 
   expect(result.status).toBe(1);
-  expect(result.stderr).toMatch(/git clone failed|Repository target|fetch/);
+  expect(result.stderr).toMatch(/git clone failed/);
 });
 
 test('smoke: built CLI fetch mode with subcommand fails deterministically for an unknown repo', () => {
@@ -210,7 +210,7 @@ test('smoke: built CLI fetch mode with subcommand fails deterministically for an
   ]);
 
   expect(result.status).toBe(1);
-  expect(result.stderr).toMatch(/git clone failed|Repository target|fetch/);
+  expect(result.stderr).toMatch(/git clone failed/);
 });
 
 test('contract: built executeInstaller uses bundled zx for explicit --runner zx intent', async () => {

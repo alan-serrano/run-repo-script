@@ -174,7 +174,11 @@ async function resolveSubcommandInDirectory(
   }
 
   if (isDirectory) {
-    const folderEntry = await resolveDefaultEntry(folderAbsolute, repoRoot);
+    const folderEntry = await resolveDefaultEntry(
+      folderAbsolute,
+      repoRoot,
+      searchedPaths
+    );
     if (folderEntry) {
       return folderEntry;
     }

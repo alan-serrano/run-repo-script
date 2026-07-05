@@ -139,6 +139,109 @@ test('resolveScript default entry ignores malformed package.json and falls throu
   assert.equal(result.relativePath, 'index.js');
 });
 
+test('resolveScript default entry returns root main.mjs when no .js/.index.mjs', async () => {
+  const repoRoot = await withTempRepo();
+  await writeFile(path.join(repoRoot, 'main.mjs'), 'export {}\n');
+
+  const result = await resolveScript(repoRoot);
+
+  assert.equal(result.relativePath, 'main.mjs');
+});
+
+test('resolveScript default entry returns root index.sh when no .js variants', async () => {
+  const repoRoot = await withTempRepo();
+  await writeFile(path.join(repoRoot, 'index.sh'), '#!/usr/bin/env bash\n');
+
+  const result = await resolveScript(repoRoot);
+
+  assert.equal(result.relativePath, 'index.sh');
+});
+
+test('resolveScript default entry falls through to scripts/main.js when root is empty', async () => {
+  const repoRoot = await withTempRepo();
+  await mkdir(path.join(repoRoot, 'scripts'), { recursive: true });
+  await writeFile(
+    path.join(repoRoot, 'scripts', 'main.js'),
+    'console.log("scripts/main")\n'
+  );
+
+  const result = await resolveScript(repoRoot);
+
+  assert.equal(result.relativePath, path.join('scripts', 'main.js'));
+});
+
+test('resolveScript default entry falls through to scripts/index.mjs when root is empty', async () => {
+  const repoRoot = await withTempRepo();
+  await mkdir(path.join(repoRoot, 'scripts'), { recursive: true });
+  await writeFile(path.join(repoRoot, 'scripts', 'index.mjs'), 'export {}\n');
+
+  const result = await resolveScript(repoRoot);
+
+  assert.equal(result.relativePath, path.join('scripts', 'index.mjs'));
+});
+
+test('resolveScript default entry falls through to scripts/main.mjs when root is empty', async () => {
+  const repoRoot = await withTempRepo();
+  await mkdir(path.join(repoRoot, 'scripts'), { recursive: true });
+  await writeFile(path.join(repoRoot, 'scripts', 'main.mjs'), 'export {}\n');
+
+  const result = await resolveScript(repoRoot);
+
+  assert.equal(result.relativePath, path.join('scripts', 'main.mjs'));
+});
+
+test('resolveScript default entry falls through to scripts/index.sh when root is empty', async () => {
+  const repoRoot = await withTempRepo();
+  await mkdir(path.join(repoRoot, 'scripts'), { recursive: true });
+  await writeFile(
+    path.join(repoRoot, 'scripts', 'index.sh'),
+    '#!/usr/bin/env bash\n'
+  );
+
+  const result = await resolveScript(repoRoot);
+
+  assert.equal(result.relativePath, path.join('scripts', 'index.sh'));
+});
+
+test('resolveScript default entry falls through to index.js when package.json main points to nonexistent file', async () => {
+  const repoRoot = await withTempRepo();
+  await writeFile(
+    path.join(repoRoot, 'package.json'),
+    JSON.stringify({ name: 'demo', main: 'missing.js' })
+  );
+  await writeFile(path.join(repoRoot, 'index.js'), 'console.log("hi")\n');
+
+  const result = await resolveScript(repoRoot);
+
+  assert.equal(result.relativePath, 'index.js');
+});
+
+test('resolveScript default entry falls through to index.js when package.json main is a non-string value', async () => {
+  const repoRoot = await withTempRepo();
+  await writeFile(
+    path.join(repoRoot, 'package.json'),
+    JSON.stringify({ name: 'demo', main: 123 })
+  );
+  await writeFile(path.join(repoRoot, 'index.js'), 'console.log("hi")\n');
+
+  const result = await resolveScript(repoRoot);
+
+  assert.equal(result.relativePath, 'index.js');
+});
+
+test('resolveScript default entry falls through to index.js when package.json main is empty string', async () => {
+  const repoRoot = await withTempRepo();
+  await writeFile(
+    path.join(repoRoot, 'package.json'),
+    JSON.stringify({ name: 'demo', main: '' })
+  );
+  await writeFile(path.join(repoRoot, 'index.js'), 'console.log("hi")\n');
+
+  const result = await resolveScript(repoRoot);
+
+  assert.equal(result.relativePath, 'index.js');
+});
+
 // ---------------------------------------------------------------------------
 // resolveScript — named subcommand
 // ---------------------------------------------------------------------------

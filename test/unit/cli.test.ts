@@ -86,6 +86,9 @@ test('mocked CLI happy path: runCli executes installer and cleans workspace', as
 
 test('mocked CLI error path: missing installer returns failure and cleanup', async () => {
   const workspaceDir = await createWorkspace();
+  const decoyPackagePath = path.join(workspaceDir, 'package.json');
+  await writeFile(decoyPackagePath, JSON.stringify({ name: 'decoy' }));
+
   const stderrMessages = captureStderr();
 
   fetchRepositoryMock.mockResolvedValue({
@@ -104,7 +107,7 @@ test('mocked CLI error path: missing installer returns failure and cleanup', asy
 
   expect(exitCode).toBe(1);
   expect(stderrMessages.join('')).toMatch(/No script found/);
-  await expect(readFile(path.join(workspaceDir, 'index.js'))).rejects.toThrow();
+  await expect(readFile(decoyPackagePath)).rejects.toThrow();
 });
 
 test('mocked CLI error path: unavailable runner returns deterministic failure', async () => {

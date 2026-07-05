@@ -82,6 +82,41 @@ export function resolveGitHubTarget(input: string): ResolvedRepoTarget {
   };
 }
 
+export function looksLikeGitHubTarget(input: string): boolean {
+  const target = input.trim();
+  if (!target) {
+    return false;
+  }
+
+  if (SSH_STYLE_REGEX.test(target)) {
+    throw new Error(
+      'Unsupported repository target: SSH syntax is not supported in v1. Use owner/repo or https://github.com/...'
+    );
+  }
+
+  if (SHORTHAND_REGEX.test(target)) {
+    return true;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(target);
+  } catch {
+    return false;
+  }
+
+  if (parsed.protocol !== 'https:') {
+    return false;
+  }
+
+  if (parsed.hostname !== 'github.com') {
+    return false;
+  }
+
+  const pathname = parsed.pathname.replace(/^\/+|\/+$/g, '');
+  return HTTPS_PATH_REGEX.test(pathname);
+}
+
 export function createGitCloneCommand(
   resolvedTarget: ResolvedRepoTarget,
   destinationDir: string

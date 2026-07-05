@@ -40,19 +40,66 @@ npx run-repo-script owner/repo
 npx run-repo-script owner/repo#v1.2.3
 ```
 
-## Example
+## Examples
 
-Run an explicit installer script and forward flags to it:
-
-```bash
-run-repo owner/repo --script scripts/install.sh -- --target local --verbose
-```
-
-Select a runner explicitly:
+Fetch a repo and run its default entry:
 
 ```bash
-run-repo owner/repo --runner node --dangerously-skip-confirmation
+run-repo owner/repo
 ```
+
+Fetch a repo and run a named subcommand:
+
+```bash
+run-repo owner/repo deploy
+```
+
+Run a script in the current working directory (no fetch):
+
+```bash
+run-repo install
+```
+
+Bypass the resolver with an explicit path (escape hatch):
+
+```bash
+run-repo owner/repo --script scripts/setup.mjs
+```
+
+Forward flags to the resolved script (everything after `--`):
+
+```bash
+run-repo owner/repo -- --target local --verbose
+```
+
+## How `run-repo-script` finds scripts
+
+`run-repo` classifies the first positional as either a GitHub target
+(`owner/repo[#ref]` or `https://github.com/...`) for fetch+run mode, or
+anything else (including an empty argv) for local mode against the
+current working directory. In both modes the same resolver runs against
+the resulting repo root: the root is searched first, then `scripts/`
+under it.
+
+### Default entry fallback order
+
+When no subcommand is given, the resolver tries each step in order and
+returns the first hit. The same seven steps run at the repo root, then
+the same seven again under `scripts/`:
+
+1. `package.json#main` (resolved to an existing file)
+2. `index.js`
+3. `main.js`
+4. `index.mjs`
+5. `main.mjs`
+6. `index.sh`
+7. `main.sh`
+
+A named subcommand follows a parallel layout (broader step 1 that also
+catches `.cjs`, `.json`, and folder recursion). `--script <path>`
+bypasses the lookup entirely. Full lookup tables and failure-distinction
+rules live in the design doc captured in Engram
+(`sdd/script-discovery/design`).
 
 ## Safety notes
 

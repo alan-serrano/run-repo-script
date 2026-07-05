@@ -85,29 +85,46 @@ async function resolveDefaultEntry(
   const packageJsonAbsolute = path.join(dir, 'package.json');
   searchedPaths?.push(path.relative(repoRoot, packageJsonAbsolute));
   if (await fileExists(packageJsonAbsolute)) {
+    let pkgMain: string | undefined;
     try {
       const pkg = JSON.parse(await readFile(packageJsonAbsolute, 'utf8')) as {
         main?: unknown;
       };
       if (typeof pkg.main === 'string' && pkg.main.length > 0) {
-        const mainAbsolute = path.join(dir, pkg.main);
-        if (await fileExists(mainAbsolute)) {
-          return {
-            absolutePath: await realpath(mainAbsolute),
-            relativePath: path.relative(repoRoot, mainAbsolute)
-          };
-        }
+        pkgMain = pkg.main;
       }
     } catch {
       // malformed package.json — fall through to index.js
+    }
+
+    if (pkgMain !== undefined) {
+      const mainAbsolute = path.join(dir, pkgMain);
+      if (await fileExists(mainAbsolute)) {
+        const mainRealPath = await realpath(mainAbsolute);
+        if (!isPathInsideRoot(repoRoot, mainRealPath)) {
+          throw new Error(
+            `Script entry resolves outside repo: ${path.relative(repoRoot, mainAbsolute)}`
+          );
+        }
+        return {
+          absolutePath: mainRealPath,
+          relativePath: path.relative(repoRoot, mainAbsolute)
+        };
+      }
     }
   }
 
   const indexAbsolute = path.join(dir, 'index.js');
   searchedPaths?.push(path.relative(repoRoot, indexAbsolute));
   if (await fileExists(indexAbsolute)) {
+    const indexRealPath = await realpath(indexAbsolute);
+    if (!isPathInsideRoot(repoRoot, indexRealPath)) {
+      throw new Error(
+        `Script entry resolves outside repo: ${path.relative(repoRoot, indexAbsolute)}`
+      );
+    }
     return {
-      absolutePath: await realpath(indexAbsolute),
+      absolutePath: indexRealPath,
       relativePath: path.relative(repoRoot, indexAbsolute)
     };
   }
@@ -121,6 +138,12 @@ async function resolveSubcommandInDirectory(
   repoRoot: string,
   searchedPaths: string[]
 ): Promise<DiscoveryResult | undefined> {
+  if (name.includes('..') || name.includes('/') || name.includes('\\')) {
+    throw new Error(
+      `Invalid subcommand name '${name}': must not contain '..' or path separators.`
+    );
+  }
+
   const cjsAbsolute = path.join(dir, `${name}.cjs`);
   searchedPaths.push(path.relative(repoRoot, cjsAbsolute));
   if (await fileExists(cjsAbsolute)) {
@@ -140,16 +163,21 @@ async function resolveSubcommandInDirectory(
   }
 
   const folderAbsolute = path.join(dir, name);
+  let isDirectory = false;
   try {
     const folderStat = await stat(folderAbsolute);
     if (folderStat.isDirectory()) {
-      const folderEntry = await resolveDefaultEntry(folderAbsolute, repoRoot);
-      if (folderEntry) {
-        return folderEntry;
-      }
+      isDirectory = true;
     }
   } catch {
     // folder does not exist — fall through to explicit extensions
+  }
+
+  if (isDirectory) {
+    const folderEntry = await resolveDefaultEntry(folderAbsolute, repoRoot);
+    if (folderEntry) {
+      return folderEntry;
+    }
   }
 
   for (const extension of SUBCOMMAND_EXPLICIT_EXTENSIONS) {

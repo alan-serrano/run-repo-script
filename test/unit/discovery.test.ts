@@ -298,3 +298,107 @@ test('resolveExplicitScript rejects traversal via symlink that escapes repo', as
     /must resolve to a file inside the (fetched repository|cwd|repo)/
   );
 });
+
+// ---------------------------------------------------------------------------
+// resolveScript — containment + traversal rejection
+// ---------------------------------------------------------------------------
+
+test('resolveScript default entry rejects package.json#main that resolves outside repo via symlink', async () => {
+  const repoRoot = await withTempRepo();
+  const outsideRoot = await mkdtemp(
+    path.join(tmpdir(), 'run-repo-discovery-outside-')
+  );
+  tempRepos.push(outsideRoot);
+
+  const outsideScript = path.join(outsideRoot, 'evil.js');
+  await writeFile(outsideScript, 'console.log("evil")\n');
+  await symlink(outsideScript, path.join(repoRoot, 'evil.js'));
+
+  await writeFile(
+    path.join(repoRoot, 'package.json'),
+    JSON.stringify({ name: 'demo', main: 'evil.js' })
+  );
+
+  await assert.rejects(
+    () => resolveScript(repoRoot),
+    (error: Error) => {
+      assert.match(error.message, /outside repo/);
+      return true;
+    }
+  );
+});
+
+test('resolveScript default entry rejects index.js symlink that escapes repo', async () => {
+  const repoRoot = await withTempRepo();
+  const outsideRoot = await mkdtemp(
+    path.join(tmpdir(), 'run-repo-discovery-index-outside-')
+  );
+  tempRepos.push(outsideRoot);
+
+  const outsideScript = path.join(outsideRoot, 'evil.js');
+  await writeFile(outsideScript, 'console.log("evil")\n');
+  await symlink(outsideScript, path.join(repoRoot, 'index.js'));
+
+  await assert.rejects(
+    () => resolveScript(repoRoot),
+    (error: Error) => {
+      assert.match(error.message, /outside repo/);
+      return true;
+    }
+  );
+});
+
+test('resolveScript subcommand rejects .. in name', async () => {
+  const repoRoot = await withTempRepo();
+  await mkdir(path.join(repoRoot, 'scripts'), { recursive: true });
+  await writeFile(
+    path.join(repoRoot, 'scripts', 'install.js'),
+    'console.log("hi")\n'
+  );
+
+  await assert.rejects(
+    () => resolveScript(repoRoot, '../install'),
+    (error: Error) => {
+      assert.match(error.message, /must not contain '\.\.'|path separator/i);
+      return true;
+    }
+  );
+});
+
+test('resolveScript subcommand rejects name containing path separator', async () => {
+  const repoRoot = await withTempRepo();
+
+  await assert.rejects(
+    () => resolveScript(repoRoot, 'sub/install'),
+    (error: Error) => {
+      assert.match(error.message, /must not contain|path separator/i);
+      return true;
+    }
+  );
+});
+
+test('resolveScript subcommand rejects folder whose package.json main escapes repo', async () => {
+  const repoRoot = await withTempRepo();
+  const outsideRoot = await mkdtemp(
+    path.join(tmpdir(), 'run-repo-discovery-folder-outside-')
+  );
+  tempRepos.push(outsideRoot);
+
+  const outsideScript = path.join(outsideRoot, 'payload.js');
+  await writeFile(outsideScript, 'console.log("evil")\n');
+
+  await mkdir(path.join(repoRoot, 'attack'), { recursive: true });
+  await symlink(outsideScript, path.join(repoRoot, 'attack', 'payload.js'));
+  await writeFile(
+    path.join(repoRoot, 'attack', 'package.json'),
+    JSON.stringify({ name: 'attack', main: 'payload.js' })
+  );
+
+  await assert.rejects(
+    () => resolveScript(repoRoot, 'attack'),
+    (error: Error) => {
+      assert.match(error.message, /outside repo/);
+      return true;
+    }
+  );
+});

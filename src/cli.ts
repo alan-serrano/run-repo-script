@@ -37,15 +37,20 @@ export function parseRunConfig(argv: string[]): RunConfig {
     optionTerminatorIndex === -1 ? [] : argv.slice(optionTerminatorIndex + 1);
   const repoTarget = parsed.positionals[0] ?? '';
   const secondPositional = parsed.positionals[1];
-  const subcommand =
+  const secondPositionalIsPreTerminator =
     secondPositional !== undefined &&
     (optionTerminatorIndex === -1 ||
-      argv.indexOf(secondPositional) < optionTerminatorIndex)
-      ? secondPositional
-      : undefined;
+      argv.indexOf(secondPositional) < optionTerminatorIndex);
   const mode: 'fetch' | 'local' = looksLikeGitHubTarget(repoTarget)
     ? 'fetch'
     : 'local';
+  // In local mode, a single positional doubles as the script name so
+  // `run-repo install` resolves install.mjs in the cwd.
+  const subcommand = secondPositionalIsPreTerminator
+    ? secondPositional
+    : mode === 'local' && repoTarget !== ''
+      ? repoTarget
+      : undefined;
 
   return {
     mode,

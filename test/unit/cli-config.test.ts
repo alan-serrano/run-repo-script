@@ -29,11 +29,12 @@ test('parseRunConfig classifies GitHub HTTPS URL with ref as fetch mode', () => 
   expect(config.mode).toBe('fetch');
 });
 
-test('parseRunConfig classifies plain word as local mode', () => {
+test('parseRunConfig classifies plain word as local mode and treats it as subcommand', () => {
   const config = parseRunConfig(['install']);
 
   expect(config.mode).toBe('local');
   expect(config.repoTarget).toBe('install');
+  expect(config.subcommand).toBe('install');
 });
 
 test('parseRunConfig classifies empty argv as local mode', () => {

@@ -1,15 +1,16 @@
-import { realpath, stat } from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { DiscoveryResult } from './types.js';
 
-export const DEFAULT_INSTALLER_PATHS = [
-  'install.mjs',
-  'install.js',
-  'install.sh',
-  'scripts/install.mjs',
-  'scripts/install.js',
-  'scripts/install.sh'
+const DEFAULT_ENTRY_EXPLICIT_NAMES = [
+  'main.js',
+  'index.mjs',
+  'main.mjs',
+  'index.sh',
+  'main.sh'
 ] as const;
+
+const SUBCOMMAND_EXPLICIT_EXTENSIONS = ['.js', '.mjs', '.sh'] as const;
 
 function normalizeRelativeScriptPath(inputPath: string): string {
   const normalized = path.posix
@@ -22,7 +23,7 @@ function normalizeRelativeScriptPath(inputPath: string): string {
     normalized.startsWith('../')
   ) {
     throw new Error(
-      'Explicit --script must point to a file inside the fetched repository.'
+      'Explicit --script must point to a file inside the repository or working directory.'
     );
   }
 
@@ -62,7 +63,7 @@ async function resolveContainedFilePath(
   if (!isPathInsideRoot(repoRootRealPath, resolvedPath)) {
     if (rejectOutsideRoot) {
       throw new Error(
-        'Explicit --script must resolve to a file inside the fetched repository.'
+        'Explicit --script must resolve to a file inside the repository or working directory.'
       );
     }
 
@@ -76,59 +77,166 @@ async function resolveContainedFilePath(
   return resolvedPath;
 }
 
-export async function resolveInstaller(
+async function resolveDefaultEntry(
+  dir: string,
   repoRoot: string,
-  explicitScript?: string
-): Promise<DiscoveryResult> {
-  const repoRootRealPath = await realpath(repoRoot);
-  const searchedPaths = [...DEFAULT_INSTALLER_PATHS];
-
-  if (explicitScript) {
-    const relativePath = normalizeRelativeScriptPath(explicitScript);
-    const absolutePath = path.join(repoRoot, relativePath);
-    const resolvedPath = await resolveContainedFilePath(
-      repoRootRealPath,
-      absolutePath,
-      true
-    );
-
-    if (!resolvedPath) {
-      throw new Error(`Explicit script not found: ${relativePath}`);
+  searchedPaths?: string[]
+): Promise<DiscoveryResult | undefined> {
+  const packageJsonAbsolute = path.join(dir, 'package.json');
+  searchedPaths?.push(path.relative(repoRoot, packageJsonAbsolute));
+  if (await fileExists(packageJsonAbsolute)) {
+    try {
+      const pkg = JSON.parse(await readFile(packageJsonAbsolute, 'utf8')) as {
+        main?: unknown;
+      };
+      if (typeof pkg.main === 'string' && pkg.main.length > 0) {
+        const mainAbsolute = path.join(dir, pkg.main);
+        if (await fileExists(mainAbsolute)) {
+          return {
+            absolutePath: await realpath(mainAbsolute),
+            relativePath: path.relative(repoRoot, mainAbsolute)
+          };
+        }
+      }
+    } catch {
+      // malformed package.json — fall through to index.js
     }
+  }
 
+  const indexAbsolute = path.join(dir, 'index.js');
+  searchedPaths?.push(path.relative(repoRoot, indexAbsolute));
+  if (await fileExists(indexAbsolute)) {
     return {
-      absolutePath: resolvedPath,
-      relativePath
+      absolutePath: await realpath(indexAbsolute),
+      relativePath: path.relative(repoRoot, indexAbsolute)
     };
   }
 
-  const foundDefaults: DiscoveryResult[] = [];
+  return undefined;
+}
 
-  for (const relativePath of searchedPaths) {
-    const absolutePath = path.join(repoRoot, relativePath);
-    const resolvedPath = await resolveContainedFilePath(
-      repoRootRealPath,
-      absolutePath,
-      false
-    );
+async function resolveSubcommandInDirectory(
+  dir: string,
+  name: string,
+  repoRoot: string,
+  searchedPaths: string[]
+): Promise<DiscoveryResult | undefined> {
+  const cjsAbsolute = path.join(dir, `${name}.cjs`);
+  searchedPaths.push(path.relative(repoRoot, cjsAbsolute));
+  if (await fileExists(cjsAbsolute)) {
+    return {
+      absolutePath: await realpath(cjsAbsolute),
+      relativePath: path.relative(repoRoot, cjsAbsolute)
+    };
+  }
 
-    if (resolvedPath) {
-      foundDefaults.push({ absolutePath: resolvedPath, relativePath });
+  const jsonAbsolute = path.join(dir, `${name}.json`);
+  searchedPaths.push(path.relative(repoRoot, jsonAbsolute));
+  if (await fileExists(jsonAbsolute)) {
+    return {
+      absolutePath: await realpath(jsonAbsolute),
+      relativePath: path.relative(repoRoot, jsonAbsolute)
+    };
+  }
+
+  const folderAbsolute = path.join(dir, name);
+  try {
+    const folderStat = await stat(folderAbsolute);
+    if (folderStat.isDirectory()) {
+      const folderEntry = await resolveDefaultEntry(folderAbsolute, repoRoot);
+      if (folderEntry) {
+        return folderEntry;
+      }
+    }
+  } catch {
+    // folder does not exist — fall through to explicit extensions
+  }
+
+  for (const extension of SUBCOMMAND_EXPLICIT_EXTENSIONS) {
+    const absolute = path.join(dir, `${name}${extension}`);
+    const relative = path.relative(repoRoot, absolute);
+    searchedPaths.push(relative);
+    if (await fileExists(absolute)) {
+      return {
+        absolutePath: await realpath(absolute),
+        relativePath: relative
+      };
     }
   }
 
-  if (foundDefaults.length === 1) {
-    return foundDefaults[0];
+  return undefined;
+}
+
+export async function resolveScript(
+  repoRoot: string,
+  name?: string
+): Promise<DiscoveryResult> {
+  const repoRootRealPath = await realpath(repoRoot);
+  const directories = [
+    repoRootRealPath,
+    path.join(repoRootRealPath, 'scripts')
+  ];
+  const searchedPaths: string[] = [];
+
+  for (const directory of directories) {
+    if (name) {
+      const subcommandResult = await resolveSubcommandInDirectory(
+        directory,
+        name,
+        repoRootRealPath,
+        searchedPaths
+      );
+      if (subcommandResult) {
+        return subcommandResult;
+      }
+    } else {
+      const defaultEntry = await resolveDefaultEntry(
+        directory,
+        repoRootRealPath,
+        searchedPaths
+      );
+      if (defaultEntry) {
+        return defaultEntry;
+      }
+
+      for (const filename of DEFAULT_ENTRY_EXPLICIT_NAMES) {
+        const absolute = path.join(directory, filename);
+        const relative = path.relative(repoRootRealPath, absolute);
+        searchedPaths.push(relative);
+        if (await fileExists(absolute)) {
+          return {
+            absolutePath: await realpath(absolute),
+            relativePath: relative
+          };
+        }
+      }
+    }
   }
 
-  if (foundDefaults.length === 0) {
-    throw new Error(
-      `No installer script found. Searched: ${searchedPaths.join(', ')}`
-    );
-  }
-
-  const matched = foundDefaults.map((result) => result.relativePath).join(', ');
   throw new Error(
-    `Multiple installer scripts found (${matched}). Pass --script to choose exactly one.`
+    `No script found. Searched: ${searchedPaths.join(', ')}. Use --script <path> to specify an exact path.`
   );
+}
+
+export async function resolveExplicitScript(
+  repoRoot: string,
+  explicitScript: string
+): Promise<DiscoveryResult> {
+  const repoRootRealPath = await realpath(repoRoot);
+  const relativePath = normalizeRelativeScriptPath(explicitScript);
+  const absolutePath = path.join(repoRoot, relativePath);
+  const resolvedPath = await resolveContainedFilePath(
+    repoRootRealPath,
+    absolutePath,
+    true
+  );
+
+  if (!resolvedPath) {
+    throw new Error(`Explicit script not found: ${relativePath}`);
+  }
+
+  return {
+    absolutePath: resolvedPath,
+    relativePath
+  };
 }

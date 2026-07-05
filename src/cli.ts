@@ -4,7 +4,7 @@ import { parseArgs } from 'node:util';
 import { realpathSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
-import { resolveInstaller } from './discovery.js';
+import { resolveExplicitScript, resolveScript } from './discovery.js';
 import { executeInstaller } from './execute.js';
 import { fetchRepository } from './fetch.js';
 import type { RunConfig } from './types.js';
@@ -38,6 +38,7 @@ export function parseRunConfig(argv: string[]): RunConfig {
   const repoTarget = parsed.positionals[0] ?? '';
 
   return {
+    mode: 'fetch',
     repoTarget,
     script: parsed.values.script,
     runner: parsed.values.runner,
@@ -81,10 +82,9 @@ export async function runCli(argv: string[]): Promise<number> {
     const fetchedRepo = await fetchRepository(config.repoTarget);
     workspaceDir = fetchedRepo.workspaceDir;
 
-    const script = await resolveInstaller(
-      fetchedRepo.workspaceDir,
-      config.script
-    );
+    const script = config.script
+      ? await resolveExplicitScript(fetchedRepo.workspaceDir, config.script)
+      : await resolveScript(fetchedRepo.workspaceDir);
 
     return await executeInstaller({
       repoRoot: fetchedRepo.workspaceDir,

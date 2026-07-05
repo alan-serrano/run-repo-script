@@ -6,9 +6,13 @@ import { withNonInteractiveTty } from '../helpers/tty.js';
 import { runCli } from '../../src/cli.js';
 import { fetchRepository } from '../../src/fetch.js';
 
-vi.mock('../../src/fetch.js', () => ({
-  fetchRepository: vi.fn()
-}));
+vi.mock('../../src/fetch.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/fetch.js')>();
+  return {
+    ...actual,
+    fetchRepository: vi.fn()
+  };
+});
 
 const fetchRepositoryMock = fetchRepository as MockedFunction<
   typeof fetchRepository
@@ -51,7 +55,7 @@ test('mocked CLI happy path: runCli executes installer and cleans workspace', as
   await rm(markerPath, { force: true });
 
   await writeFile(
-    path.join(workspaceDir, 'install.js'),
+    path.join(workspaceDir, 'index.js'),
     `import { writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(markerPath)}, process.argv.slice(2).join(' '));\n`
   );
 
@@ -77,13 +81,14 @@ test('mocked CLI happy path: runCli executes installer and cleans workspace', as
   expect(exitCode).toBe(0);
   expect(stderrMessages).toEqual([]);
   expect(await readFile(markerPath, 'utf8')).toBe('--target local');
-  await expect(
-    readFile(path.join(workspaceDir, 'install.js'))
-  ).rejects.toThrow();
+  await expect(readFile(path.join(workspaceDir, 'index.js'))).rejects.toThrow();
 });
 
 test('mocked CLI error path: missing installer returns failure and cleanup', async () => {
   const workspaceDir = await createWorkspace();
+  const decoyPackagePath = path.join(workspaceDir, 'package.json');
+  await writeFile(decoyPackagePath, JSON.stringify({ name: 'decoy' }));
+
   const stderrMessages = captureStderr();
 
   fetchRepositoryMock.mockResolvedValue({
@@ -101,15 +106,13 @@ test('mocked CLI error path: missing installer returns failure and cleanup', asy
   ]);
 
   expect(exitCode).toBe(1);
-  expect(stderrMessages.join('')).toMatch(/No installer script found/);
-  await expect(
-    readFile(path.join(workspaceDir, 'install.js'))
-  ).rejects.toThrow();
+  expect(stderrMessages.join('')).toMatch(/No script found/);
+  await expect(readFile(decoyPackagePath)).rejects.toThrow();
 });
 
 test('mocked CLI error path: unavailable runner returns deterministic failure', async () => {
   const workspaceDir = await createWorkspace();
-  await writeFile(path.join(workspaceDir, 'install.js'), 'console.log("ok")\n');
+  await writeFile(path.join(workspaceDir, 'index.js'), 'console.log("ok")\n');
 
   fetchRepositoryMock.mockResolvedValue({
     workspaceDir,
@@ -135,7 +138,7 @@ test('mocked CLI error path: unavailable runner returns deterministic failure', 
 
 test('mocked CLI confirmation contract: non-interactive mode fails fast with dangerous flag guidance', async () => {
   const workspaceDir = await createWorkspace();
-  await writeFile(path.join(workspaceDir, 'install.js'), 'console.log("ok")\n');
+  await writeFile(path.join(workspaceDir, 'index.js'), 'console.log("ok")\n');
 
   fetchRepositoryMock.mockResolvedValue({
     workspaceDir,
@@ -160,7 +163,7 @@ test('mocked CLI confirmation contract: non-interactive mode fails fast with dan
 
 test('mocked CLI exit code propagation: runCli forwards non-zero child code', async () => {
   const workspaceDir = await createWorkspace();
-  await writeFile(path.join(workspaceDir, 'install.js'), 'process.exit(42)\n');
+  await writeFile(path.join(workspaceDir, 'index.js'), 'process.exit(42)\n');
 
   fetchRepositoryMock.mockResolvedValue({
     workspaceDir,

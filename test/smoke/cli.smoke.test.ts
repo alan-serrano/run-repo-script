@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -12,9 +12,9 @@ const cliEntrypoint = fileURLToPath(
 const executeEntrypoint = fileURLToPath(
   new URL('../../dist/execute.js', import.meta.url)
 );
-function runBuiltCli(args: string[]) {
+function runBuiltCli(args: string[], options?: { cwd?: string }) {
   return spawnSync(process.execPath, [cliEntrypoint, ...args], {
-    cwd: repoRoot,
+    cwd: options?.cwd ?? repoRoot,
     encoding: 'utf8'
   });
 }
@@ -133,12 +133,84 @@ test('smoke: installed npm bin executes direct --help path', async () => {
   });
 });
 
-test('contract: built CLI without target exits with deterministic guidance', () => {
-  const result = runBuiltCli([]);
+test('contract: built CLI without target enters local mode and surfaces the resolver diagnostic', async () => {
+  await withTempWorkspace(async (workspaceDir) => {
+    const result = runBuiltCli([], { cwd: workspaceDir });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/No script found/);
+    expect(result.stderr).toMatch(/--script/);
+  });
+});
+
+test('smoke: built CLI runs local default entry index.js in cwd', async () => {
+  await withTempWorkspace(async (workspaceDir) => {
+    const markerPath = path.join(workspaceDir, 'local-default-marker.txt');
+    await writeFile(
+      path.join(workspaceDir, 'index.js'),
+      `import { writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(markerPath)}, 'ok');\n`
+    );
+
+    const result = runBuiltCli(['--dangerously-skip-confirmation'], {
+      cwd: workspaceDir
+    });
+
+    expect(result.status).toBe(0);
+    expect(await readFile(markerPath, 'utf8')).toBe('ok');
+  });
+});
+
+test('smoke: built CLI runs local subcommand deploy.mjs in cwd', async () => {
+  await withTempWorkspace(async (workspaceDir) => {
+    const markerPath = path.join(workspaceDir, 'local-sub-marker.txt');
+    await writeFile(
+      path.join(workspaceDir, 'deploy.mjs'),
+      `import { writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(markerPath)}, 'ok');\n`
+    );
+
+    const result = runBuiltCli(['deploy', '--dangerously-skip-confirmation'], {
+      cwd: workspaceDir
+    });
+
+    expect(result.status).toBe(0);
+    expect(await readFile(markerPath, 'utf8')).toBe('ok');
+  });
+});
+
+test('smoke: built CLI honors --script escape in local mode', async () => {
+  await withTempWorkspace(async (workspaceDir) => {
+    const markerPath = path.join(workspaceDir, 'local-script-marker.txt');
+    await mkdir(path.join(workspaceDir, 'scripts'), { recursive: true });
+    await writeFile(
+      path.join(workspaceDir, 'scripts', 'setup.mjs'),
+      `import { writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(markerPath)}, 'ok');\n`
+    );
+
+    const result = runBuiltCli(
+      ['--script', 'scripts/setup.mjs', '--dangerously-skip-confirmation'],
+      { cwd: workspaceDir }
+    );
+
+    expect(result.status).toBe(0);
+    expect(await readFile(markerPath, 'utf8')).toBe('ok');
+  });
+});
+
+test('smoke: built CLI fetch mode fails deterministically for an unknown repo', () => {
+  const result = runBuiltCli(['this-org-does-not-exist-xyz123/no-such-repo']);
 
   expect(result.status).toBe(1);
-  expect(result.stderr).toContain('Repository target is required.');
-  expect(result.stdout).toContain('Usage: run-repo');
+  expect(result.stderr).toMatch(/git clone failed/);
+});
+
+test('smoke: built CLI fetch mode with subcommand fails deterministically for an unknown repo', () => {
+  const result = runBuiltCli([
+    'this-org-does-not-exist-xyz123/no-such-repo',
+    'deploy'
+  ]);
+
+  expect(result.status).toBe(1);
+  expect(result.stderr).toMatch(/git clone failed/);
 });
 
 test('contract: built executeInstaller uses bundled zx for explicit --runner zx intent', async () => {

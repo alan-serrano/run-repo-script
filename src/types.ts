@@ -1,5 +1,7 @@
 export interface RunConfig {
+  mode: 'fetch' | 'local';
   repoTarget: string;
+  subcommand?: string;
   script?: string;
   runner?: string;
   dangerouslySkipConfirmation: boolean;

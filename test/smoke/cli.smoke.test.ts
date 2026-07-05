@@ -12,9 +12,9 @@ const cliEntrypoint = fileURLToPath(
 const executeEntrypoint = fileURLToPath(
   new URL('../../dist/execute.js', import.meta.url)
 );
-function runBuiltCli(args: string[]) {
+function runBuiltCli(args: string[], options?: { cwd?: string }) {
   return spawnSync(process.execPath, [cliEntrypoint, ...args], {
-    cwd: repoRoot,
+    cwd: options?.cwd ?? repoRoot,
     encoding: 'utf8'
   });
 }
@@ -133,12 +133,14 @@ test('smoke: installed npm bin executes direct --help path', async () => {
   });
 });
 
-test('contract: built CLI without target exits with deterministic guidance', () => {
-  const result = runBuiltCli([]);
+test('contract: built CLI without target enters local mode and surfaces the resolver diagnostic', async () => {
+  await withTempWorkspace(async (workspaceDir) => {
+    const result = runBuiltCli([], { cwd: workspaceDir });
 
-  expect(result.status).toBe(1);
-  expect(result.stderr).toContain('Repository target is required.');
-  expect(result.stdout).toContain('Usage: run-repo');
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/No script found/);
+    expect(result.stderr).toMatch(/--script/);
+  });
 });
 
 test('contract: built executeInstaller uses bundled zx for explicit --runner zx intent', async () => {

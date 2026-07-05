@@ -6,7 +6,7 @@ import { rm } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { resolveExplicitScript, resolveScript } from './discovery.js';
 import { executeInstaller } from './execute.js';
-import { fetchRepository } from './fetch.js';
+import { fetchRepository, looksLikeGitHubTarget } from './fetch.js';
 import type { RunConfig } from './types.js';
 
 export function parseRunConfig(argv: string[]): RunConfig {
@@ -36,10 +36,21 @@ export function parseRunConfig(argv: string[]): RunConfig {
   const forwardArgs =
     optionTerminatorIndex === -1 ? [] : argv.slice(optionTerminatorIndex + 1);
   const repoTarget = parsed.positionals[0] ?? '';
+  const secondPositional = parsed.positionals[1];
+  const subcommand =
+    secondPositional !== undefined &&
+    (optionTerminatorIndex === -1 ||
+      argv.indexOf(secondPositional) < optionTerminatorIndex)
+      ? secondPositional
+      : undefined;
+  const mode: 'fetch' | 'local' = looksLikeGitHubTarget(repoTarget)
+    ? 'fetch'
+    : 'local';
 
   return {
-    mode: 'fetch',
+    mode,
     repoTarget,
+    subcommand,
     script: parsed.values.script,
     runner: parsed.values.runner,
     dangerouslySkipConfirmation: parsed.values['dangerously-skip-confirmation'],
@@ -70,24 +81,24 @@ export async function runCli(argv: string[]): Promise<number> {
     return 0;
   }
 
-  if (!config.repoTarget) {
-    process.stderr.write('Repository target is required.\n');
-    printUsage();
-    return 1;
-  }
-
   let workspaceDir: string | undefined;
+  let repoRoot: string;
 
   try {
-    const fetchedRepo = await fetchRepository(config.repoTarget);
-    workspaceDir = fetchedRepo.workspaceDir;
+    if (config.mode === 'fetch') {
+      const fetched = await fetchRepository(config.repoTarget);
+      workspaceDir = fetched.workspaceDir;
+      repoRoot = fetched.workspaceDir;
+    } else {
+      repoRoot = realpathSync(process.cwd());
+    }
 
     const script = config.script
-      ? await resolveExplicitScript(fetchedRepo.workspaceDir, config.script)
-      : await resolveScript(fetchedRepo.workspaceDir);
+      ? await resolveExplicitScript(repoRoot, config.script)
+      : await resolveScript(repoRoot, config.subcommand);
 
     return await executeInstaller({
-      repoRoot: fetchedRepo.workspaceDir,
+      repoRoot,
       script,
       runnerOverride: config.runner,
       dangerouslySkipConfirmation: config.dangerouslySkipConfirmation,

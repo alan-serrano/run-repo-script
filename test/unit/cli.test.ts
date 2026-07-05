@@ -6,9 +6,13 @@ import { withNonInteractiveTty } from '../helpers/tty.js';
 import { runCli } from '../../src/cli.js';
 import { fetchRepository } from '../../src/fetch.js';
 
-vi.mock('../../src/fetch.js', () => ({
-  fetchRepository: vi.fn()
-}));
+vi.mock('../../src/fetch.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/fetch.js')>();
+  return {
+    ...actual,
+    fetchRepository: vi.fn()
+  };
+});
 
 const fetchRepositoryMock = fetchRepository as MockedFunction<
   typeof fetchRepository

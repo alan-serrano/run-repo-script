@@ -49,7 +49,7 @@
     "lint-staged": "^16.4.0",
     "prettier": "^3.8.4",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "zx": "^8.8.5"

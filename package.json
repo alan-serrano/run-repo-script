@@ -39,17 +39,17 @@
   "devDependencies": {
     "@eslint/js": "^9.39.4",
     "@types/node": "^26.0.1",
-    "@typescript-eslint/eslint-plugin": "^8.62.0",
-    "@typescript-eslint/parser": "^8.62.0",
+    "@typescript-eslint/eslint-plugin": "^8.71.0",
+    "@typescript-eslint/parser": "^8.71.0",
     "@vitest/eslint-plugin": "^1.6.20",
-    "eslint": "^9.39.4",
+    "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^16.5.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "prettier": "^3.8.4",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "zx": "^8.8.5"
